@@ -1164,9 +1164,20 @@
                             openAgentPanel(id);
                         } else if (attempts >= 15) { // 30 seconds max
                             clearInterval(checkInterval);
-                            AGENT_INFO[id].status = 'OFFLINE';
+                            AGENT_INFO[id].status = 'OFFLINE'; // Revert internally for polling
                             renderRoster();
                             openAgentPanel(id);
+                            // Explicit UI override for the failure state
+                            setAlfredStatus('error', 'FAILED TO START');
+                            const statusEl = document.getElementById('side-agent-status');
+                            if (statusEl) {
+                                statusEl.innerHTML =
+                                    `<div style="margin-bottom:6px">
+                                       STATUS: <span style="color:var(--red)">FAILED TO START</span>
+                                     </div>
+                                     <div style="margin-bottom:6px;opacity:0.7">ROLE: ${AGENT_INFO[id].role}</div>
+                                     <div style="font-size:11px;line-height:1.6;opacity:0.6">${AGENT_INFO[id].desc}</div>`;
+                            }
                             appendMessage('jarvis', `Agent ${id.toUpperCase()} failed to come online within 30 seconds, Sir.`);
                         }
                     }, 2000);
