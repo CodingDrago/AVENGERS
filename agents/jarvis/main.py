@@ -51,7 +51,7 @@ logger.info(f"Key 1 present: {bool(GEMINI_KEYS[0]) if GEMINI_KEYS else False}")
 
 # DB Path
 _default_db = os.path.join(os.path.dirname(__file__), "..", "..", "db", "core.db")
-DB_PATH = config.get("PATHS", {}).get("DB", _default_db)
+DB_PATH = config.get("paths", {}).get("db", _default_db)
 DB_PATH = os.path.normpath(DB_PATH)
 db_dir = os.path.dirname(DB_PATH)
 if db_dir and not os.path.exists(db_dir):
@@ -225,12 +225,18 @@ def should_auto_route(message: str, context: list) -> tuple[bool, str | None]:
 
     # Check 3: Pure execution commands
     exec_patterns = {
+        "ALFRED": [
+            r"tell alfred", r"ask alfred", r"alfred.*schedule",
+            r"alfred.*tasks", r"alfred.*briefing", r"sync alfred",
+            r"morning briefing", r"my schedule", r"build.*schedule",
+            r"weekly roadmap", r"velocity report", r"how am i doing",
+            r"tasks.*today", r"overdue tasks"
+        ],
         "STARK": [r"build my site", r"deploy", r"push to github"],
         "VISION": [r"design concept", r"wireframe"],
         "BANNER": [r"create.*automation", r"n8n workflow"],
         "NEBULA": [r"generate.*image", r"create.*asset"],
-        "ALFRED": [r"morning briefing", r"schedule"],
-        "WONG": [r"log.*income", r"log.*expense", r"track.*transaction"]
+        "WONG":   [r"log.*income", r"log.*expense", r"track.*transaction"]
     }
     for agent, patterns in exec_patterns.items():
         for pattern in patterns:

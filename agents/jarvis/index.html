@@ -265,6 +265,118 @@
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes spin-rev { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        /* --- ALFRED QUICK ACTIONS --- */
+        .alfred-panel { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+        .alfred-status {
+            font-size: 10px; letter-spacing: 2px; padding: 6px 10px;
+            border: 1px solid rgba(0,200,255,0.3);
+            display: flex; align-items: center; gap: 8px;
+            transition: all 0.2s ease;
+        }
+        .alfred-status-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--agent-primary);
+            transition: background 0.2s ease;
+        }
+        .alfred-status.sending .alfred-status-dot { background: #ffff00; }
+        .alfred-status.thinking .alfred-status-dot {
+            background: var(--amber);
+            animation: pulse 0.8s infinite;
+        }
+        .alfred-status.success .alfred-status-dot { background: var(--green); }
+        .alfred-status.error .alfred-status-dot { background: var(--red); }
+        .alfred-status.pending .alfred-status-dot {
+            background: var(--green);
+            animation: pulse 1.2s infinite;
+        }
+
+        .alfred-quick-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 5px;
+        }
+        .alfred-btn {
+            background: rgba(0,200,255,0.06);
+            border: 1px solid rgba(0,200,255,0.25);
+            color: var(--agent-primary);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 9px; letter-spacing: 1px;
+            padding: 7px 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            line-height: 1.4;
+        }
+        .alfred-btn:hover:not(:disabled) {
+            background: rgba(0,200,255,0.15);
+            border-color: var(--agent-primary);
+            box-shadow: 0 0 8px rgba(0,200,255,0.3);
+        }
+        .alfred-btn:disabled {
+            opacity: 0.3; cursor: not-allowed;
+        }
+        .alfred-btn.amber { border-color: rgba(255,160,0,0.4); color: var(--amber); }
+        .alfred-btn.green { border-color: rgba(0,255,180,0.4); color: var(--green); }
+        .alfred-btn.red   { border-color: rgba(255,64,96,0.4);  color: var(--red); }
+
+        .alfred-info-card {
+            font-size: 9px; line-height: 1.8; opacity: 0.7;
+            padding: 6px 8px;
+            border-left: 2px solid rgba(0,200,255,0.3);
+            background: rgba(0,200,255,0.03);
+        }
+
+        .alfred-schedule-actions {
+            display: flex; gap: 5px; margin-top: 6px;
+        }
+        .alfred-schedule-actions button {
+            flex: 1; padding: 6px 4px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 9px; letter-spacing: 1px;
+            cursor: pointer; border: 1px solid;
+            background: transparent; transition: 0.2s;
+        }
+        .alfred-schedule-actions button:hover {
+            filter: brightness(1.3);
+        }
+
+        .alfred-add-task-form {
+            display: none; flex-direction: column; gap: 6px;
+            padding: 8px; border: 1px solid rgba(0,200,255,0.2);
+            background: rgba(0,200,255,0.03);
+            margin-top: 4px;
+        }
+        .alfred-add-task-form input,
+        .alfred-add-task-form textarea {
+            background: transparent;
+            border: 1px solid rgba(0,200,255,0.25);
+            color: var(--agent-primary);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 10px; padding: 5px 8px;
+            outline: none;
+            width: 100%;
+        }
+        .alfred-add-task-form input:focus,
+        .alfred-add-task-form textarea:focus {
+            border-color: var(--agent-primary);
+            box-shadow: 0 0 6px rgba(0,200,255,0.2);
+        }
+        .alfred-add-task-form textarea { resize: vertical; min-height: 50px; }
+
+        .alfred-edit-area {
+            display: none; flex-direction: column; gap: 6px; margin-top: 6px;
+        }
+        .alfred-edit-area textarea {
+            background: rgba(0,200,255,0.04);
+            border: 1px solid rgba(0,200,255,0.3);
+            color: var(--agent-primary);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 10px; padding: 8px;
+            outline: none; resize: vertical;
+            min-height: 150px; width: 100%;
+            line-height: 1.6;
+        }
     </style>
 </head>
 <body>
@@ -937,55 +1049,380 @@
                 }
             }
         }
-        function openAgentPanel(id) {
-          playSound('click');
-          const info = AGENT_INFO[id];
-          if (!info) return;
+        async function openAgentPanel(id) {
+            playSound('click');
+            const info = AGENT_INFO[id];
+            if (!info) return;
 
-          const nameEl = document.getElementById('side-agent-name');
-          const statusEl = document.getElementById('side-agent-status');
-          const tasksEl = document.getElementById('side-agent-tasks');
-          const panel = document.getElementById('agent-side-panel');
+            window.currentOpenAgent = id;
 
-          if (nameEl) nameEl.innerText = id.toUpperCase();
+            const nameEl = document.getElementById('side-agent-name');
+            const statusEl = document.getElementById('side-agent-status');
+            const tasksEl = document.getElementById('side-agent-tasks');
+            const panel = document.getElementById('agent-side-panel');
 
-          const statusColor = {
-            'ACTIVE': 'var(--green)',
-            'BUILDING': 'var(--amber)',
-            'ALERT': 'var(--red)',
-            'IDLE': 'rgba(0,200,255,0.5)'
-          }[info.status] || 'var(--agent-primary)';
+            if (nameEl) nameEl.innerText = id.toUpperCase();
 
-          if (statusEl) statusEl.innerHTML =
-            `<div style="margin-bottom:8px">
-              STATUS: <span style="color:${statusColor}">${info.status}</span>
-             </div>
-             <div style="margin-bottom:8px;opacity:0.7">
-              ROLE: ${info.role}
-             </div>
-             <div style="font-size:11px;line-height:1.6;opacity:0.6">
-              ${info.desc}
-             </div>`;
+            const statusColor = {
+                'ACTIVE': 'var(--green)', 'BUILDING': 'var(--amber)',
+                'ALERT': 'var(--red)', 'IDLE': 'rgba(0,200,255,0.5)'
+            }[info.status] || 'var(--agent-primary)';
 
-          // Honest availability status
-          const isBuilt = id === 'jarvis'; // only JARVIS is built so far
-          if (tasksEl) tasksEl.innerHTML =
-            `<div style="margin-bottom:8px;font-size:10px">AVAILABILITY:</div>` +
-            (isBuilt
-              ? `<div style="color:var(--green);font-size:10px">● ONLINE · RESPONDING</div>
-                 <div style="opacity:0.5;font-size:9px;margin-top:4px">
-                   Port 8000 · Active session
-                 </div>`
-              : `<div style="color:var(--amber);font-size:10px">
-                   ○ NOT YET BUILT
+            if (statusEl) statusEl.innerHTML =
+                `<div style="margin-bottom:6px">
+                   STATUS: <span style="color:${statusColor}">${info.status}</span>
                  </div>
-                 <div style="opacity:0.5;font-size:9px;margin-top:4px;line-height:1.6">
-                   This agent is planned but not yet<br>
-                   implemented. Ask JARVIS about it<br>
-                   and JARVIS will handle it directly.
-                 </div>`);
+                 <div style="margin-bottom:6px;opacity:0.7">ROLE: ${info.role}</div>
+                 <div style="font-size:11px;line-height:1.6;opacity:0.6">${info.desc}</div>`;
 
-          if (panel) panel.style.right = '20px';
+            // ALFRED gets a full control panel
+            if (id === 'alfred') {
+                if (tasksEl) tasksEl.innerHTML = '';
+                renderAlfredPanel(tasksEl);
+                if (panel) panel.style.right = '20px';
+                return;
+            }
+
+            // All other agents
+            const isBuilt = id === 'jarvis';
+            if (tasksEl) tasksEl.innerHTML =
+                `<div style="margin-bottom:8px;font-size:10px">AVAILABILITY:</div>` +
+                (isBuilt
+                    ? `<div style="color:var(--green);font-size:10px">● ONLINE · RESPONDING</div>
+                       <div style="opacity:0.5;font-size:9px;margin-top:4px">Port 8000 · Active session</div>`
+                    : `<div style="color:var(--amber);font-size:10px">○ NOT YET BUILT</div>
+                       <div style="opacity:0.5;font-size:9px;margin-top:4px;line-height:1.6">
+                         This agent is planned but not yet<br>implemented.
+                         Ask JARVIS about it<br>and JARVIS will handle it directly.</div>`);
+
+            if (panel) panel.style.right = '20px';
+        }
+
+        var alfredActionInProgress = false;
+        var alfredScheduleText = '';
+
+        async function renderAlfredPanel(container) {
+            if (!container) return;
+
+            // Fetch health status
+            let healthHtml = '<div style="opacity:0.4;font-size:9px;">Checking ALFRED status...</div>';
+            try {
+                const h = await fetch('http://localhost:8001/health');
+                const hd = await h.json();
+                const tasksOk = hd.google_tasks;
+                const calOk = hd.google_calendar;
+                healthHtml = `
+                    <div class="alfred-info-card">
+                        GOOGLE TASKS: <span style="color:${tasksOk?'var(--green)':'var(--red)'}">
+                            ${tasksOk ? '● CONNECTED' : '○ DISCONNECTED'}
+                        </span><br>
+                        GOOGLE CALENDAR: <span style="color:${calOk?'var(--green)':'var(--red)'}">
+                            ${calOk ? '● CONNECTED' : '○ DISCONNECTED'}
+                        </span><br>
+                        BRIEFING: <span style="opacity:0.7">08:00 DAILY</span>
+                    </div>`;
+                // Fetch today's velocity
+                try {
+                    const v = await fetch('http://localhost:8001/velocity/today');
+                    const vd = await v.json();
+                    if (vd.score !== null && vd.score !== undefined) {
+                        healthHtml += `
+                            <div class="alfred-info-card" style="margin-top:5px">
+                                TODAY'S VELOCITY: <span style="color:var(--green)">${vd.score}%</span>
+                                <span style="opacity:0.5"> (${vd.completed}/${vd.total} tasks)</span>
+                            </div>`;
+                    }
+                } catch(e) {}
+                // Fetch tasks due today count
+                try {
+                    const t = await fetch('http://localhost:8001/tasks/today');
+                    const td = await t.json();
+                    if (td.tasks && td.tasks.length > 0) {
+                        healthHtml += `
+                            <div class="alfred-info-card" style="margin-top:5px;border-left-color:var(--amber)">
+                                TASKS DUE TODAY: <span style="color:var(--amber)">${td.tasks.length}</span>
+                            </div>`;
+                    }
+                } catch(e) {}
+            } catch(e) {
+                healthHtml = `<div class="alfred-info-card" style="border-left-color:var(--red);color:var(--red)">
+                    ALFRED OFFLINE — Start agent on port 8001</div>`;
+                alfredActionInProgress = true; // disable buttons if offline
+            }
+
+            container.innerHTML = `
+                <div class="alfred-panel">
+                    ${healthHtml}
+
+                    <div class="alfred-status" id="alfred-status-bar">
+                        <div class="alfred-status-dot"></div>
+                        <span id="alfred-status-text">STATUS: ACTIVE</span>
+                    </div>
+
+                    <div class="alfred-quick-grid">
+                        <button class="alfred-btn" onclick="alfredAction('schedule')">📅<br>Today's<br>Schedule</button>
+                        <button class="alfred-btn" onclick="alfredAction('regenerate')">🔄<br>Refresh<br>Schedule</button>
+                        <button class="alfred-btn" onclick="alfredAction('telegram')">📤<br>Send to<br>Telegram</button>
+                        <button class="alfred-btn" onclick="alfredAction('tasks')">📋<br>My Tasks</button>
+                        <button class="alfred-btn amber" onclick="alfredAction('overdue')">⚠️<br>Overdue</button>
+                        <button class="alfred-btn" onclick="alfredAction('today-tasks')">✅<br>Due Today</button>
+                        <button class="alfred-btn" onclick="alfredAction('roadmap')">🗺️<br>Weekly<br>Roadmap</button>
+                        <button class="alfred-btn" onclick="alfredAction('velocity')">📊<br>Velocity</button>
+                        <button class="alfred-btn" onclick="alfredAction('sync')">🔁<br>Force Sync</button>
+                        <button class="alfred-btn" onclick="alfredAction('briefing')">🌅<br>Morning<br>Briefing</button>
+                        <button class="alfred-btn green" onclick="alfredAction('health')">❤️<br>Health Check</button>
+                        <button class="alfred-btn green" onclick="showAddTaskForm()">➕<br>Add Task</button>
+                    </div>
+
+                    <div class="alfred-add-task-form" id="alfred-add-task-form">
+                        <div style="font-size:9px;letter-spacing:2px;opacity:0.6;margin-bottom:4px">ADD TASK</div>
+                        <input type="text" id="alfred-task-title" placeholder="Task title *" maxlength="200">
+                        <input type="date" id="alfred-task-due" style="color-scheme:dark;">
+                        <textarea id="alfred-task-notes" placeholder="Notes (optional)" maxlength="200"></textarea>
+                        <div style="display:flex;gap:5px;">
+                            <button class="alfred-btn green" style="flex:1"
+                                onclick="submitAddTask()">SAVE TASK</button>
+                            <button class="alfred-btn red" style="flex:1"
+                                onclick="hideAddTaskForm()">CANCEL</button>
+                        </div>
+                    </div>
+
+                    <div id="alfred-schedule-controls" style="display:none;">
+                        <div style="font-size:9px;letter-spacing:1px;opacity:0.5;margin-bottom:4px">
+                            SCHEDULE GENERATED — REVIEW & APPROVE
+                        </div>
+                        <div class="alfred-schedule-actions">
+                            <button onclick="alfredApprove()"
+                                style="border-color:var(--green);color:var(--green);">
+                                ✅ APPROVE
+                            </button>
+                            <button onclick="alfredEdit()"
+                                style="border-color:var(--amber);color:var(--amber);">
+                                ✏️ EDIT
+                            </button>
+                            <button onclick="alfredDeleteSchedule()"
+                                style="border-color:var(--red);color:var(--red);">
+                                🗑️ DELETE
+                            </button>
+                        </div>
+                        <div class="alfred-edit-area" id="alfred-edit-area">
+                            <textarea id="alfred-edit-textarea"></textarea>
+                            <button class="alfred-btn green" onclick="saveScheduleEdit()">
+                                SAVE CHANGES
+                            </button>
+                        </div>
+                    </div>
+                </div>`;
+
+            if (alfredActionInProgress) {
+                document.querySelectorAll('.alfred-btn').forEach(b => b.disabled = true);
+            }
+        }
+
+        function setAlfredStatus(state, text) {
+            const bar = document.getElementById('alfred-status-bar');
+            const textEl = document.getElementById('alfred-status-text');
+            if (!bar || !textEl) return;
+            bar.className = 'alfred-status ' + state;
+            textEl.textContent = 'STATUS: ' + text;
+        }
+
+        function setAlfredButtonsDisabled(disabled) {
+            document.querySelectorAll('.alfred-btn').forEach(b => {
+                b.disabled = disabled;
+            });
+            alfredActionInProgress = disabled;
+        }
+
+        async function alfredAction(action) {
+            if (alfredActionInProgress) return;
+            setAlfredButtonsDisabled(true);
+            setAlfredStatus('sending', 'SENDING...');
+
+            // Map action to endpoint and display label
+            const actionMap = {
+                'schedule':    {url: 'http://localhost:8001/run',
+                                body: {task:'schedule', context:'',
+                                       user_input:'build my schedule for today'},
+                                method: 'POST', isSchedule: true},
+                'regenerate':  {url: 'http://localhost:8001/schedule/regenerate',
+                                method: 'POST', isSchedule: true},
+                'telegram':    {url: 'http://localhost:8001/briefing/send',
+                                method: 'POST'},
+                'tasks':       {url: 'http://localhost:8001/run',
+                                body: {task:'list_tasks', context:'',
+                                       user_input:'list my tasks'},
+                                method: 'POST'},
+                'overdue':     {url: 'http://localhost:8001/tasks/overdue',
+                                method: 'GET'},
+                'today-tasks': {url: 'http://localhost:8001/tasks/today',
+                                method: 'GET'},
+                'roadmap':     {url: 'http://localhost:8001/run',
+                                body: {task:'roadmap', context:'',
+                                       user_input:'weekly roadmap'},
+                                method: 'POST'},
+                'velocity':    {url: 'http://localhost:8001/run',
+                                body: {task:'velocity', context:'',
+                                       user_input:'velocity report'},
+                                method: 'POST'},
+                'sync':        {url: 'http://localhost:8001/sync', method: 'POST'},
+                'briefing':    {url: 'http://localhost:8001/briefing/send',
+                                method: 'POST'},
+                'health':      {url: 'http://localhost:8001/health', method: 'GET'},
+            };
+
+            const cfg = actionMap[action];
+            if (!cfg) { setAlfredButtonsDisabled(false); return; }
+
+            setTimeout(() => setAlfredStatus('thinking', 'THINKING...'), 300);
+
+            try {
+                const opts = {method: cfg.method, headers: {}};
+                if (cfg.body) {
+                    opts.headers['Content-Type'] = 'application/json';
+                    opts.body = JSON.stringify(cfg.body);
+                }
+                const res = await fetch(cfg.url, opts);
+                const data = await res.json();
+                const reply = data.reply || data.message || JSON.stringify(data);
+
+                // Show in chat
+                appendMessage('jarvis', reply);
+
+                // If schedule — show approval controls
+                if (cfg.isSchedule && reply && reply.includes('|')) {
+                    alfredScheduleText = reply;
+                    const controls = document.getElementById('alfred-schedule-controls');
+                    if (controls) controls.style.display = 'block';
+                    setAlfredStatus('pending', 'APPROVAL PENDING');
+                } else {
+                    setAlfredStatus('success', 'SENT SUCCESSFULLY');
+                    setTimeout(() => setAlfredStatus('', 'ACTIVE'), 3000);
+                }
+
+                // Special feedback for telegram send
+                if (action === 'telegram' || action === 'briefing') {
+                    const sent = data.telegram_sent;
+                    setAlfredStatus('success',
+                        sent ? 'SENT TO TELEGRAM' : 'COMPLETE (NO TELEGRAM)');
+                    setTimeout(() => setAlfredStatus('', 'ACTIVE'), 3000);
+                }
+
+            } catch(e) {
+                appendMessage('jarvis',
+                    'ALFRED is not responding, Sir. Ensure it is running on port 8001.');
+                setAlfredStatus('error', 'ERROR');
+                setTimeout(() => setAlfredStatus('', 'ACTIVE'), 4000);
+            } finally {
+                setAlfredButtonsDisabled(false);
+            }
+        }
+
+        async function alfredApprove() {
+            setAlfredStatus('sending', 'WRITING TO CALENDAR...');
+            try {
+                const res = await fetch('http://localhost:8001/schedule/approve',
+                    {method: 'POST'});
+                const data = await res.json();
+                appendMessage('jarvis', data.reply || data.error);
+                document.getElementById('alfred-schedule-controls').style.display = 'none';
+                setAlfredStatus('success', 'CALENDAR UPDATED');
+                setTimeout(() => setAlfredStatus('', 'ACTIVE'), 3000);
+            } catch(e) {
+                setAlfredStatus('error', 'CALENDAR WRITE FAILED');
+                setTimeout(() => setAlfredStatus('', 'ACTIVE'), 4000);
+            }
+        }
+
+        function alfredEdit() {
+            const editArea = document.getElementById('alfred-edit-area');
+            const textarea = document.getElementById('alfred-edit-textarea');
+            if (!editArea || !textarea) return;
+            textarea.value = alfredScheduleText;
+            editArea.style.display = editArea.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        async function saveScheduleEdit() {
+            const textarea = document.getElementById('alfred-edit-textarea');
+            if (!textarea) return;
+            const newText = textarea.value;
+            const lines = newText.split('\n');
+
+            setAlfredStatus('sending', 'SAVING EDITS...');
+            try {
+                // Send each changed line
+                for (let i = 0; i < lines.length; i++) {
+                    if (lines[i] !== alfredScheduleText.split('\n')[i]) {
+                        await fetch('http://localhost:8001/schedule/edit', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({block_index: i, new_text: lines[i]})
+                        });
+                    }
+                }
+                alfredScheduleText = newText;
+                appendMessage('jarvis', 'Schedule updated, Sir.\n\n' + newText);
+                document.getElementById('alfred-edit-area').style.display = 'none';
+                setAlfredStatus('pending', 'APPROVAL PENDING');
+            } catch(e) {
+                setAlfredStatus('error', 'EDIT FAILED');
+                setTimeout(() => setAlfredStatus('', 'ACTIVE'), 3000);
+            }
+        }
+
+        async function alfredDeleteSchedule() {
+            if (!confirm('Delete today\'s schedule?')) return;
+            try {
+                await fetch('http://localhost:8001/schedule/delete', {method: 'POST'});
+                document.getElementById('alfred-schedule-controls').style.display = 'none';
+                alfredScheduleText = '';
+                appendMessage('jarvis', "Today's schedule deleted, Sir.");
+                setAlfredStatus('', 'ACTIVE');
+            } catch(e) {
+                setAlfredStatus('error', 'DELETE FAILED');
+            }
+        }
+
+        function showAddTaskForm() {
+            const form = document.getElementById('alfred-add-task-form');
+            if (form) form.style.display = 'flex';
+        }
+
+        function hideAddTaskForm() {
+            const form = document.getElementById('alfred-add-task-form');
+            if (form) {
+                form.style.display = 'none';
+                document.getElementById('alfred-task-title').value = '';
+                document.getElementById('alfred-task-due').value = '';
+                document.getElementById('alfred-task-notes').value = '';
+            }
+        }
+
+        async function submitAddTask() {
+            const title = document.getElementById('alfred-task-title').value.trim();
+            const due = document.getElementById('alfred-task-due').value;
+            const notes = document.getElementById('alfred-task-notes').value.trim();
+            if (!title) {
+                document.getElementById('alfred-task-title')
+                    .style.borderColor = 'var(--red)';
+                return;
+            }
+            setAlfredStatus('sending', 'ADDING TASK...');
+            try {
+                const res = await fetch('http://localhost:8001/tasks/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({title, due_date: due, notes})
+                });
+                const data = await res.json();
+                appendMessage('jarvis', data.reply || data.error);
+                hideAddTaskForm();
+                setAlfredStatus('success', 'TASK ADDED');
+                setTimeout(() => setAlfredStatus('', 'ACTIVE'), 3000);
+            } catch(e) {
+                setAlfredStatus('error', 'ADD TASK FAILED');
+                setTimeout(() => setAlfredStatus('', 'ACTIVE'), 3000);
+            }
         }
         document.addEventListener('click', (e) => {
             const panel = document.getElementById('agent-side-panel');
@@ -1828,36 +2265,83 @@
                   const result = e.results[i];
                   const transcript = result[0].transcript;
                   
-                  if (result.isFinal) {
-                      if (!commsOpen) {
-                          const lower = transcript.toLowerCase().trim();
-                          if (lower.includes('hey jarvis') || lower.match(/\bjarvis\b/)) {
-                              onWakeWord();
-                          }
-                      } else {
-                          // Accumulate — don't reset on each final result
-                          finalTranscript += ' ' + transcript;
-                          clearTimeout(silenceTimer);
-                          
-                          // Update input with accumulated transcript
-                          const input = document.getElementById('chat-input');
-                          if (input && !isSending) {
-                              input.value = finalTranscript.trim();
-                              input.style.height = 'auto';
-                              input.style.height = Math.min(input.scrollHeight, 120) + 'px';
-                              input.placeholder = 'SPEAK NOW...';
-                          }
-                          
-                          // 3 seconds after last word = send
-                          silenceTimer = setTimeout(() => {
-                              const cmd = finalTranscript.trim();
-                              if (cmd && cmd.length > 1 && !isSending) {
-                                  finalTranscript = '';
-                                  sendMessage();
-                              }
-                          }, 3000);
-                      }
-                  } else {
+                    if (result.isFinal) {
+                        if (!commsOpen) {
+                            const lower = transcript.toLowerCase().trim();
+                            if (lower.includes('hey jarvis') || lower.match(/\bjarvis\b/)) {
+                                onWakeWord();
+                            }
+                        } else {
+                            // ALFRED voice command interception
+                            // Only intercept if ALFRED panel is currently open
+                            if (window.currentOpenAgent === 'alfred') {
+                                const lower = transcript.toLowerCase().trim();
+                                const alfredVoiceMap = [
+                                    {patterns: ["today's schedule", "my schedule", "show schedule"],
+                                     action: 'schedule'},
+                                    {patterns: ["refresh schedule", "new schedule", "regenerate schedule"],
+                                     action: 'regenerate'},
+                                    {patterns: ["send to telegram", "send schedule", "telegram briefing"],
+                                     action: 'telegram'},
+                                    {patterns: ["my tasks", "list tasks", "show tasks"],
+                                     action: 'tasks'},
+                                    {patterns: ["overdue tasks", "overdue", "what's overdue"],
+                                     action: 'overdue'},
+                                    {patterns: ["tasks due today", "due today", "today's tasks"],
+                                     action: 'today-tasks'},
+                                    {patterns: ["weekly roadmap", "this week", "week plan"],
+                                     action: 'roadmap'},
+                                    {patterns: ["velocity report", "how am i doing", "my progress"],
+                                     action: 'velocity'},
+                                    {patterns: ["force sync", "sync google", "sync now"],
+                                     action: 'sync'},
+                                    {patterns: ["morning briefing", "send briefing"],
+                                     action: 'briefing'},
+                                ];
+                                let matched = false;
+                                for (const cmd of alfredVoiceMap) {
+                                    if (cmd.patterns.some(p => lower.includes(p))) {
+                                        // Show recognized command briefly in input
+                                        const input = document.getElementById('chat-input');
+                                        if (input) {
+                                            input.value = transcript.trim();
+                                            setTimeout(() => { input.value = ''; }, 1500);
+                                        }
+                                        alfredAction(cmd.action);
+                                        matched = true;
+                                        break;
+                                    }
+                                }
+                                if (matched) {
+                                    finalTranscript = '';
+                                    clearTimeout(silenceTimer);
+                                    return;
+                                }
+                            }
+
+                            // Accumulate — don't reset on each final result
+                            finalTranscript += ' ' + transcript;
+                            clearTimeout(silenceTimer);
+                            
+                            // Update input with accumulated transcript
+                            const input = document.getElementById('chat-input');
+                            if (input && !isSending) {
+                                input.value = finalTranscript.trim();
+                                input.style.height = 'auto';
+                                input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+                                input.placeholder = 'SPEAK NOW...';
+                            }
+                            
+                            // 3 seconds after last word = send
+                            silenceTimer = setTimeout(() => {
+                                const cmd = finalTranscript.trim();
+                                if (cmd && cmd.length > 1 && !isSending) {
+                                    finalTranscript = '';
+                                    sendMessage();
+                                }
+                            }, 3000);
+                        }
+                    } else {
                       // Interim — show what's being heard right now
                       interimText += transcript;
                       if (commsOpen) {

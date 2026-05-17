@@ -24,8 +24,14 @@ if not os.path.exists(CONFIG_PATH):
     CONFIG_PATH = "config.json" # Fallback
 
 def get_db_path():
+    # Priority 1: config.json paths.db
+    config_path = CONFIG.get("paths", {}).get("db")
+    if config_path:
+        return os.path.normpath(config_path)
+    # Priority 2: Absolute /avengers/db
     if os.path.exists("/avengers/db"):
         return "/avengers/db/core.db"
+    # Priority 3: Relative fallback
     base = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "../../"))
     return os.path.join(base, "db", "core.db")
@@ -72,8 +78,8 @@ GOOGLE_CREDENTIALS_PATH = CONFIG.get("google_credentials_path", "credentials.jso
 GOOGLE_TOKEN_PATH = CONFIG.get("google_token_path", "token.json")
 
 SCOPES = [
-    'https://www.googleapis.com/auth/tasks.readonly',
-    'https://www.googleapis.com/auth/calendar.readonly'
+    'https://www.googleapis.com/auth/tasks',
+    'https://www.googleapis.com/auth/calendar'
 ]
 
 def calculate_velocity_score(completed: int, total: int) -> int:
@@ -161,10 +167,22 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date TEXT UNIQUE,
                 schedule_json TEXT,
+                schedule_text TEXT,
                 created_at TEXT,
-                velocity_score INTEGER
+                velocity_score REAL,
+                approved INTEGER DEFAULT 0
             )
         ''')
+        # Migration for existing columns
+        try:
+            await db.execute("ALTER TABLE daily_schedules ADD COLUMN approved INTEGER DEFAULT 0")
+            await db.commit()
+        except Exception: pass
+        try:
+            await db.execute("ALTER TABLE daily_schedules ADD COLUMN schedule_text TEXT")
+            await db.commit()
+        except Exception: pass
+
         await db.execute('''
             CREATE TABLE IF NOT EXISTS task_velocity (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,6 +195,41 @@ async def init_db():
         ''')
         await db.commit()
     logger.info("Database initialized")
+
+def parse_schedule_lines(schedule_text: str) -> list[dict]:
+    """
+    Parse schedule text into time blocks for Google Calendar.
+    Format: HH:MM - HH:MM | [TYPE] Task name
+    Skips malformed lines silently and logs them.
+    Returns list of {start, end, title, type} dicts.
+    """
+    import re
+    blocks = []
+    pattern = re.compile(
+        r'(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*\|\s*\[(\w+)\]\s*(.+)'
+    )
+    today = datetime.now().strftime('%Y-%m-%d')
+    for line in schedule_text.strip().split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        match = pattern.match(line)
+        if not match:
+            logger.warning(f"Schedule parse: skipping malformed line: {line}")
+            continue
+        start_str, end_str, block_type, title = match.groups()
+        try:
+            start_dt = datetime.strptime(f"{today} {start_str}", '%Y-%m-%d %H:%M')
+            end_dt = datetime.strptime(f"{today} {end_str}", '%Y-%m-%d %H:%M')
+            blocks.append({
+                "start": start_dt.isoformat(),
+                "end": end_dt.isoformat(),
+                "title": f"[{block_type}] {title.strip()}",
+                "type": block_type.upper()
+            })
+        except ValueError as e:
+            logger.warning(f"Schedule parse: time parse failed for line '{line}': {e}")
+    return blocks
 
 async def get_tasks():
     creds = get_google_credentials()
@@ -417,9 +470,9 @@ async def build_daily_schedule():
     today = datetime.now().strftime('%Y-%m-%d')
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute('''
-            INSERT OR REPLACE INTO daily_schedules (date, schedule_json, created_at, velocity_score)
-            VALUES (?, ?, ?, ?)
-        ''', (today, json.dumps({"text": schedule_text}), datetime.now().isoformat(), 0))
+            INSERT OR REPLACE INTO daily_schedules (date, schedule_text, schedule_json, created_at, velocity_score, approved)
+            VALUES (?, ?, ?, ?, 0, 0)
+        ''', (today, schedule_text, json.dumps({"text": schedule_text}), datetime.now().isoformat()))
         await db.commit()
         
     # Update velocity metrics
@@ -729,6 +782,10 @@ async def startup_event():
     
     scheduler.start()
     logger.info("ALFRED started and scheduler running")
+    logger.warning(
+        "SCOPE UPGRADE: If you get 'insufficient_permission' errors, "
+        "delete token.json and re-authenticate via GET /auth/google"
+    )
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -762,6 +819,372 @@ async def run_agent(req: RunRequest):
         reply = await call_gemini(prompt)
         
     return {"reply": reply, "agent": "ALFRED", "status": "ok"}
+
+@app.post("/schedule/regenerate")
+async def regenerate_schedule():
+    """Delete today's schedule and rebuild fresh."""
+    today = datetime.now().strftime('%Y-%m-%d')
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM daily_schedules WHERE date = ?", (today,)
+        )
+        await db.commit()
+    text = await build_daily_schedule()
+    return {"reply": text, "agent": "ALFRED", "status": "ok"}
+
+
+@app.post("/schedule/approve")
+async def approve_schedule():
+    """
+    Parse today's schedule and write each time block
+    to Google Calendar as individual events.
+    """
+    today = datetime.now().strftime('%Y-%m-%d')
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT schedule_text FROM daily_schedules WHERE date = ?",
+            (today,)
+        ) as cur:
+            row = await cur.fetchone()
+
+    if not row or not row['schedule_text']:
+        return JSONResponse(
+            {"error": "No schedule found for today. Generate one first."},
+            status_code=404
+        )
+
+    creds = get_google_credentials()
+    if not creds:
+        return JSONResponse(
+            {"error": "Google not authenticated. Visit /auth/google"},
+            status_code=401
+        )
+
+    blocks = parse_schedule_lines(row['schedule_text'])
+    if not blocks:
+        return JSONResponse(
+            {"error": "Schedule format not recognized. No valid HH:MM - HH:MM | [TYPE] lines found."},
+            status_code=400
+        )
+
+    loop = asyncio.get_event_loop()
+    created = []
+    failed = []
+
+    try:
+        calendar_service = build('calendar', 'v3', credentials=creds)
+        for block in blocks:
+            try:
+                event = {
+                    'summary': block['title'],
+                    'start': {'dateTime': block['start'],
+                              'timeZone': 'Asia/Kolkata'},
+                    'end': {'dateTime': block['end'],
+                            'timeZone': 'Asia/Kolkata'},
+                    'colorId': {
+                        'TASK': '9', 'MEETING': '11',
+                        'BREAK': '2', 'BUFFER': '8'
+                    }.get(block['type'], '1')
+                }
+                created_event = await loop.run_in_executor(
+                    None,
+                    lambda e=event: calendar_service.events()
+                    .insert(calendarId='primary', body=e).execute()
+                )
+                created.append(block['title'])
+                logger.info(f"Calendar event created: {block['title']}")
+            except Exception as e:
+                failed.append(block['title'])
+                logger.error(f"Failed to create event '{block['title']}': {e}")
+
+        # Mark as approved in DB
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "UPDATE daily_schedules SET approved = 1 WHERE date = ?",
+                (today,)
+            )
+            await db.commit()
+
+        msg = f"{len(created)} events added to Google Calendar."
+        if failed:
+            msg += f" {len(failed)} failed: {', '.join(failed)}"
+        return {"reply": msg, "agent": "ALFRED",
+                "status": "ok", "created": created, "failed": failed}
+
+    except Exception as e:
+        logger.error(f"Calendar write failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/schedule/delete")
+async def delete_schedule():
+    today = datetime.now().strftime('%Y-%m-%d')
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM daily_schedules WHERE date = ?", (today,)
+        )
+        await db.commit()
+    return {"reply": "Today's schedule deleted.", "agent": "ALFRED", "status": "ok"}
+
+
+@app.post("/schedule/edit")
+async def edit_schedule(request: Request):
+    """Edit a specific line in today's schedule by index."""
+    body = await request.json()
+    block_index = body.get("block_index")
+    new_text = body.get("new_text", "").strip()
+    if block_index is None or not new_text:
+        return JSONResponse(
+            {"error": "block_index and new_text required"},
+            status_code=400
+        )
+    today = datetime.now().strftime('%Y-%m-%d')
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT schedule_text FROM daily_schedules WHERE date = ?",
+            (today,)
+        ) as cur:
+            row = await cur.fetchone()
+    if not row or not row['schedule_text']:
+        return JSONResponse({"error": "No schedule found."}, status_code=404)
+
+    lines = row['schedule_text'].strip().split('\n')
+    if block_index < 0 or block_index >= len(lines):
+        return JSONResponse(
+            {"error": f"block_index {block_index} out of range (0-{len(lines)-1})"},
+            status_code=400
+        )
+    lines[block_index] = new_text
+    updated_text = '\n'.join(lines)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE daily_schedules SET schedule_text = ?, approved = 0 WHERE date = ?",
+            (updated_text, today)
+        )
+        await db.commit()
+    return {"reply": updated_text, "agent": "ALFRED", "status": "ok"}
+
+
+@app.post("/tasks/add")
+async def add_task(request: Request):
+    body = await request.json()
+    title = body.get("title", "").strip()
+    due_date = body.get("due_date", "").strip()
+    notes = body.get("notes", "").strip()
+    if not title:
+        return JSONResponse({"error": "title is required"}, status_code=400)
+
+    creds = get_google_credentials()
+    if not creds:
+        return JSONResponse({"error": "Google not authenticated."}, status_code=401)
+
+    loop = asyncio.get_event_loop()
+    try:
+        tasks_service = build('tasks', 'v1', credentials=creds)
+        task_body = {"title": title}
+        if notes:
+            task_body["notes"] = notes
+        if due_date:
+            # Google Tasks due dates must be RFC 3339 UTC midnight
+            task_body["due"] = f"{due_date}T00:00:00.000Z"
+
+        created = await loop.run_in_executor(
+            None,
+            lambda: tasks_service.tasks()
+            .insert(tasklist='@default', body=task_body).execute()
+        )
+        logger.info(f"Task created: {title}")
+        return {
+            "reply": f"Task '{title}' added successfully, Sir.",
+            "agent": "ALFRED",
+            "status": "ok",
+            "task_id": created.get('id')
+        }
+    except Exception as e:
+        logger.error(f"Add task failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/tasks/complete")
+async def complete_task(request: Request):
+    body = await request.json()
+    task_id = body.get("task_id", "").strip()
+    if not task_id:
+        return JSONResponse({"error": "task_id required"}, status_code=400)
+
+    creds = get_google_credentials()
+    if not creds:
+        return JSONResponse({"error": "Google not authenticated."}, status_code=401)
+
+    loop = asyncio.get_event_loop()
+    try:
+        tasks_service = build('tasks', 'v1', credentials=creds)
+        await loop.run_in_executor(
+            None,
+            lambda: tasks_service.tasks().patch(
+                tasklist='@default',
+                task=task_id,
+                body={"status": "completed"}
+            ).execute()
+        )
+        # Update local cache
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "UPDATE tasks_cache SET status='completed' WHERE task_id=?",
+                (task_id,)
+            )
+            await db.commit()
+        return {
+            "reply": "Task marked complete, Sir.",
+            "agent": "ALFRED",
+            "status": "ok"
+        }
+    except Exception as e:
+        logger.error(f"Complete task failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/tasks/overdue")
+async def get_overdue_tasks():
+    today = datetime.now().strftime('%Y-%m-%d')
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT * FROM tasks_cache
+            WHERE status = 'needsAction'
+            AND due_date IS NOT NULL
+            AND due_date < ?
+            ORDER BY due_date ASC
+        """, (today,)) as cur:
+            rows = await cursor.fetchall()
+    tasks = [dict(r) for r in rows]
+    if not tasks:
+        return {"reply": "No overdue tasks, Sir.", "tasks": [],
+                "agent": "ALFRED", "status": "ok"}
+    lines = [f"- {t['title']} (due {t['due_date']})" for t in tasks]
+    return {
+        "reply": f"Overdue tasks ({len(tasks)}):\n" + "\n".join(lines),
+        "tasks": tasks,
+        "agent": "ALFRED",
+        "status": "ok"
+    }
+
+
+@app.get("/tasks/today")
+async def get_tasks_today():
+    today = datetime.now().strftime('%Y-%m-%d')
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT * FROM tasks_cache
+            WHERE status = 'needsAction'
+            AND due_date = ?
+            ORDER BY title ASC
+        """, (today,)) as cur:
+            rows = await cursor.fetchall()
+    tasks = [dict(r) for r in rows]
+    if not tasks:
+        return {"reply": "No tasks due today, Sir.", "tasks": [],
+                "agent": "ALFRED", "status": "ok"}
+    lines = [f"- {t['title']}" for t in tasks]
+    return {
+        "reply": f"Tasks due today ({len(tasks)}):\n" + "\n".join(lines),
+        "tasks": tasks,
+        "agent": "ALFRED",
+        "status": "ok"
+    }
+
+
+@app.get("/tasks/week")
+async def get_tasks_week():
+    today = datetime.now()
+    week_end = (today + timedelta(days=7)).strftime('%Y-%m-%d')
+    today_str = today.strftime('%Y-%m-%d')
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT * FROM tasks_cache
+            WHERE status = 'needsAction'
+            AND due_date BETWEEN ? AND ?
+            ORDER BY due_date ASC
+        """, (today_str, week_end)) as cur:
+            rows = await cursor.fetchall()
+    tasks = [dict(r) for r in rows]
+    if not tasks:
+        return {"reply": "No tasks this week, Sir.", "tasks": [],
+                "agent": "ALFRED", "status": "ok"}
+    lines = [f"- {t['title']} (due {t['due_date']})" for t in tasks]
+    return {
+        "reply": f"Tasks this week ({len(tasks)}):\n" + "\n".join(lines),
+        "tasks": tasks,
+        "agent": "ALFRED",
+        "status": "ok"
+    }
+
+
+@app.post("/sync")
+async def force_sync():
+    """Force sync both Google Tasks and Calendar. Returns counts."""
+    tasks = await get_tasks()
+    events = await get_calendar_events(days_ahead=7)
+    return {
+        "reply": f"Sync complete, Sir. {len(tasks)} tasks and {len(events)} calendar events loaded.",
+        "tasks_count": len(tasks),
+        "events_count": len(events),
+        "agent": "ALFRED",
+        "status": "ok"
+    }
+
+
+@app.get("/velocity/today")
+async def get_velocity_today():
+    today = datetime.now().strftime('%Y-%m-%d')
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM task_velocity WHERE date = ?", (today,)
+        ) as cur:
+            row = await cur.fetchone()
+    if not row:
+        return {"reply": "No velocity data for today yet, Sir.",
+                "score": None, "agent": "ALFRED", "status": "ok"}
+    return {
+        "reply": f"Today's velocity: {row['velocity_score']}% ({row['tasks_completed']}/{row['tasks_total']} tasks completed)",
+        "score": row['velocity_score'],
+        "completed": row['tasks_completed'],
+        "total": row['tasks_total'],
+        "agent": "ALFRED",
+        "status": "ok"
+    }
+
+
+@app.post("/briefing/send")
+async def send_briefing():
+    """Regenerate morning briefing and send to Telegram."""
+    text = await morning_briefing()
+    token = CONFIG.get("telegram_token", "")
+    chat_id = CONFIG.get("telegram_chat_id", "")
+    sent = False
+    if token and chat_id:
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    json={"chat_id": chat_id, "text": text},
+                    timeout=10.0
+                )
+            sent = True
+            logger.info("Briefing sent to Telegram via /briefing/send")
+        except Exception as e:
+            logger.error(f"Telegram send failed: {e}")
+    return {
+        "reply": text,
+        "telegram_sent": sent,
+        "agent": "ALFRED",
+        "status": "ok"
+    }
 
 @app.get("/health")
 async def health_check():
