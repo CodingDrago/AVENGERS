@@ -525,8 +525,101 @@ async def call_gemini_stream(k_idx, model_name, prompt, history=[], attachments=
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 # --- CORE STATE ---
-STATE = {"active_key_index": 0, "active_model_index": 0}
+STATE = {"active_key_index": 0, "active_model_index": 0, "processes": {}, "agent_statuses": {}}
 SESSION_START = datetime.now().isoformat()
+
+import subprocess
+
+@app.post("/agent/wake")
+async def wake_agent(request: Request):
+    body = await request.json()
+    agent_name = body.get("agent_name", "").lower()
+    
+    if not agent_name:
+        return JSONResponse({"error": "agent_name required"}, status_code=400)
+        
+    port_str = AGENT_PORTS.get(agent_name.upper())
+    if not port_str:
+        return JSONResponse({"error": f"Agent {agent_name} not found in config"}, status_code=404)
+        
+    port = int(port_str.split(":")[-1])
+    base_dir = os.path.dirname(os.path.abspath(CONFIG_PATH))
+    agent_dir = os.path.join(base_dir, "agents", agent_name)
+    
+    if not os.path.exists(agent_dir):
+        return JSONResponse({"error": f"Agent directory not found: {agent_dir}"}, status_code=404)
+        
+    existing_proc = STATE["processes"].get(agent_name)
+    if existing_proc and existing_proc.poll() is None:
+        return {"status": "already_running", "agent": agent_name}
+        
+    agent_log_dir = os.path.join(base_dir, "outputs", agent_name, "logs")
+    os.makedirs(agent_log_dir, exist_ok=True)
+    log_file = os.path.join(agent_log_dir, "uvicorn.log")
+    
+    try:
+        with open(log_file, "a") as f:
+            proc = subprocess.Popen(
+                ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", str(port)],
+                cwd=agent_dir,
+                stdout=f,
+                stderr=subprocess.STDOUT
+            )
+        STATE["processes"][agent_name] = proc
+        
+        # Write to SQLite
+        today = datetime.now().isoformat()
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS agent_runtime (
+                    agent_name TEXT PRIMARY KEY, port INTEGER, pid INTEGER,
+                    started_at TEXT, status TEXT
+                )
+            """)
+            await db.execute("""
+                INSERT OR REPLACE INTO agent_runtime
+                (agent_name, port, pid, started_at, status)
+                VALUES (?, ?, ?, ?, ?)
+            """, (agent_name, port, proc.pid, today, "STARTING"))
+            await db.commit()
+            
+        logger.info(f"Waking agent {agent_name} on port {port} (PID {proc.pid})")
+        return {"status": "starting", "agent": agent_name, "port": port}
+    except Exception as e:
+        logger.error(f"Failed to wake {agent_name}: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/agent/stop")
+async def stop_agent(request: Request):
+    body = await request.json()
+    agent_name = body.get("agent_name", "").lower()
+    
+    proc = STATE["processes"].get(agent_name)
+    if not proc:
+        return {"status": "not_running", "agent": agent_name}
+        
+    try:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Agent {agent_name} did not terminate gracefully. Killing.")
+            proc.kill()
+            
+        del STATE["processes"][agent_name]
+        
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "UPDATE agent_runtime SET status = 'OFFLINE' WHERE agent_name = ?",
+                (agent_name,)
+            )
+            await db.commit()
+            
+        logger.info(f"Stopped agent {agent_name}")
+        return {"status": "stopped", "agent": agent_name}
+    except Exception as e:
+        logger.error(f"Error stopping {agent_name}: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 async def find_best_slot():
     """Find slot with lowest usage. Used on startup and after refresh."""
