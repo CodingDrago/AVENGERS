@@ -1118,7 +1118,9 @@
 
             // ALFRED gets a full control panel
             if (id === 'alfred') {
-                if (tasksEl) tasksEl.innerHTML = actionBtnHtml;
+                if (tasksEl) tasksEl.innerHTML = '';
+                // FIX: Trigger immediate health poll before rendering
+                await pollAgentHealth();
                 renderAlfredPanel(tasksEl);
                 if (panel) panel.style.right = '20px';
                 return;
@@ -1220,59 +1222,65 @@
         async function renderAlfredPanel(container) {
             if (!container) return;
 
-            // Fetch health status
-            let healthHtml = '<div style="opacity:0.4;font-size:9px;">Checking ALFRED status...</div>';
-            try {
-                const h = await fetch('http://localhost:8001/health');
-                const hd = await h.json();
-                const tasksOk = hd.google_tasks;
-                const calOk = hd.google_calendar;
-                healthHtml = `
-                    <div class="alfred-info-card">
-                        GOOGLE TASKS: <span style="color:${tasksOk?'var(--green)':'var(--red)'}">
-                            ${tasksOk ? '● CONNECTED' : '○ DISCONNECTED'}
-                        </span><br>
-                        GOOGLE CALENDAR: <span style="color:${calOk?'var(--green)':'var(--red)'}">
-                            ${calOk ? '● CONNECTED' : '○ DISCONNECTED'}
-                        </span><br>
-                        BRIEFING: <span style="opacity:0.7">08:00 DAILY</span>
-                    </div>`;
-                // Fetch today's velocity
+            const alfredStatus = AGENT_INFO['alfred'].status;
+            const isOnline = alfredStatus === 'ONLINE' || alfredStatus === 'ACTIVE';
+            let healthHtml = '';
+
+            if (isOnline) {
+                healthHtml = '<div style="opacity:0.4;font-size:9px;">Fetching health metrics...</div>';
                 try {
-                    const v = await fetch('http://localhost:8001/velocity/today');
-                    const vd = await v.json();
-                    if (vd.score !== null && vd.score !== undefined) {
-                        healthHtml += `
-                            <div class="alfred-info-card" style="margin-top:5px">
-                                TODAY'S VELOCITY: <span style="color:var(--green)">${vd.score}%</span>
-                                <span style="opacity:0.5"> (${vd.completed}/${vd.total} tasks)</span>
-                            </div>`;
-                    }
-                } catch(e) {}
-                // Fetch tasks due today count
-                try {
-                    const t = await fetch('http://localhost:8001/tasks/today');
-                    const td = await t.json();
-                    if (td.tasks && td.tasks.length > 0) {
-                        healthHtml += `
-                            <div class="alfred-info-card" style="margin-top:5px;border-left-color:var(--amber)">
-                                TASKS DUE TODAY: <span style="color:var(--amber)">${td.tasks.length}</span>
-                            </div>`;
-                    }
-                } catch(e) {}
-            } catch(e) {
-                healthHtml = `<div class="alfred-info-card" style="border-left-color:var(--red);color:var(--red)">
-                    ALFRED OFFLINE — Start agent on port 8001</div>`;
-                alfredActionInProgress = true; // disable buttons if offline
+                    const h = await fetch('http://localhost:8001/health');
+                    const hd = await h.json();
+                    const tasksOk = hd.google_tasks;
+                    const calOk = hd.google_calendar;
+                    healthHtml = `
+                        <div class="alfred-info-card">
+                            GOOGLE TASKS: <span style="color:${tasksOk?'var(--green)':'var(--red)'}">
+                                ${tasksOk ? '● CONNECTED' : '○ DISCONNECTED'}
+                            </span><br>
+                            GOOGLE CALENDAR: <span style="color:${calOk?'var(--green)':'var(--red)'}">
+                                ${calOk ? '● CONNECTED' : '○ DISCONNECTED'}
+                            </span><br>
+                            BRIEFING: <span style="opacity:0.7">08:00 DAILY</span>
+                        </div>`;
+                    
+                    try {
+                        const v = await fetch('http://localhost:8001/velocity/today');
+                        const vd = await v.json();
+                        if (vd.score !== null && vd.score !== undefined) {
+                            healthHtml += `
+                                <div class="alfred-info-card" style="margin-top:5px">
+                                    TODAY'S VELOCITY: <span style="color:var(--green)">${vd.score}%</span>
+                                    <span style="opacity:0.5"> (${vd.completed}/${vd.total} tasks)</span>
+                                </div>`;
+                        }
+                        const t = await fetch('http://localhost:8001/tasks/today');
+                        const td = await t.json();
+                        if (td.tasks && td.tasks.length > 0) {
+                            healthHtml += `
+                                <div class="alfred-info-card" style="margin-top:5px;border-left-color:var(--amber)">
+                                    TASKS DUE TODAY: <span style="color:var(--amber)">${td.tasks.length}</span>
+                                </div>`;
+                        }
+                    } catch(e) {}
+                } catch(e) {
+                    healthHtml = `<div class="alfred-info-card" style="border-left-color:var(--amber);color:var(--amber)">
+                        ALFRED RESPONDING — HEALTH DATA TEMPORARILY UNAVAILABLE</div>`;
+                }
+                alfredActionInProgress = false;
+            } else {
+                healthHtml = `<div class="alfred-info-card" id="alfred-offline-warn" style="border-left-color:var(--red);color:var(--red)">
+                    ALFRED OFFLINE — Click Wake Agent</div>`;
+                alfredActionInProgress = true;
             }
 
             container.innerHTML = `
                 <div class="alfred-panel">
                     ${healthHtml}
 
-                    <div class="alfred-status" id="alfred-status-bar">
+                    <div class="alfred-status ${alfredStatus === 'OFFLINE' ? 'error' : (alfredStatus === 'STARTING' ? 'thinking' : '')}" id="alfred-status-bar">
                         <div class="alfred-status-dot"></div>
-                        <span id="alfred-status-text">STATUS: ACTIVE</span>
+                        <span id="alfred-status-text">STATUS: ${alfredStatus === 'ONLINE' ? 'ACTIVE' : alfredStatus}</span>
                     </div>
 
                     <div class="alfred-quick-grid">
@@ -1568,31 +1576,14 @@
                 // If ALFRED panel is open, sync its status
                 if (window.currentOpenAgent === 'alfred') {
                     const alfredStatus = data['alfred'];
-                    if (alfredStatus === 'OFFLINE' && !alfredActionInProgress) {
-                        setAlfredStatus('error', 'OFFLINE');
-                        setAlfredButtonsDisabled(true);
-                        
-                        // Show offline warning
-                        const panel = document.querySelector('.alfred-panel');
-                        if (panel) {
-                            let warn = document.getElementById('alfred-offline-warn');
-                            if (!warn) {
-                                warn = document.createElement('div');
-                                warn.id = 'alfred-offline-warn';
-                                warn.className = 'alfred-info-card';
-                                warn.style.borderColor = 'var(--red)';
-                                warn.style.color = 'var(--red)';
-                                warn.textContent = 'ALFRED OFFLINE — Click Wake Agent';
-                                panel.insertBefore(warn, panel.firstChild);
-                            }
-                        }
-                    } else if (alfredStatus === 'ONLINE' && alfredActionInProgress && document.getElementById('alfred-offline-warn')) {
-                        // Just came online
-                        setAlfredStatus('', 'ACTIVE');
-                        setAlfredButtonsDisabled(false);
-                        const warn = document.getElementById('alfred-offline-warn');
-                        if (warn) warn.remove();
-                        // Re-render to get health stats
+                    const hasWarn = !!document.getElementById('alfred-offline-warn');
+                    
+                    if (alfredStatus === 'OFFLINE' && !hasWarn) {
+                        // Re-render to show offline state
+                        const tasksEl = document.getElementById('side-agent-tasks');
+                        if (tasksEl) renderAlfredPanel(tasksEl);
+                    } else if (alfredStatus === 'ONLINE' && hasWarn) {
+                        // Re-render to show online state
                         const tasksEl = document.getElementById('side-agent-tasks');
                         if (tasksEl) renderAlfredPanel(tasksEl);
                     }
