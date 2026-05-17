@@ -1885,6 +1885,17 @@
                                     }
                                 } else if (data.type === 'system_internal') {
                                     updateStatusBar(data.text);
+                                    // FIX A16: Sync ALFRED panel status if agent matches
+                                    if (data.agent === 'alfred') {
+                                        if (data.status) {
+                                            setAlfredStatus(data.status.toLowerCase(), data.status);
+                                            if (data.status === 'THINKING') setAlfredButtonsDisabled(true);
+                                            if (data.status === 'SUCCESS' || data.status === 'IDLE') {
+                                                setAlfredButtonsDisabled(false);
+                                                setTimeout(() => setAlfredStatus('', 'ACTIVE'), 3000);
+                                            }
+                                        }
+                                    }
                                 } else if (data.type === 'context') {
                                     updateContextMeter(data.tokens, data.limit);
                                 } else if (data.type === 'error') {

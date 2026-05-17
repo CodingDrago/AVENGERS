@@ -479,11 +479,13 @@ async def call_gemini_stream(k_idx, model_name, prompt, history=[], attachments=
         if should_route and target_agent:
             agent_name = target_agent.upper()
             # Try routing to the actual agent container first
+            yield f"data: {json.dumps({'type': 'system_internal', 'text': f'Routing to {agent_name}...', 'status': 'THINKING', 'agent': agent_name.lower()})}\n\n"
+            
             agent_reply = await route_to_agent(agent_name, prompt, 
                                                 context=full_reply)
             if agent_reply:
                 # Agent responded — stream its reply as tokens
-                yield f"data: {json.dumps({'type': 'system_internal', 'text': f'Routed to {agent_name}'})}\n\n"
+                yield f"data: {json.dumps({'type': 'system_internal', 'text': f'Routed to {agent_name}', 'status': 'SUCCESS', 'agent': agent_name.lower()})}\n\n"
                 # Stream agent reply word by word so UI renders it properly
                 words = agent_reply.split(' ')
                 for i, word in enumerate(words):
@@ -493,7 +495,7 @@ async def call_gemini_stream(k_idx, model_name, prompt, history=[], attachments=
                 full_reply = agent_reply  # save agent reply to history
             else:
                 # Agent offline — JARVIS handles it, already in full_reply
-                yield f"data: {json.dumps({'type': 'system_internal', 'text': f'{agent_name} offline — handling directly'})}\n\n"
+                yield f"data: {json.dumps({'type': 'system_internal', 'text': f'{agent_name} offline — handling directly', 'status': 'IDLE', 'agent': agent_name.lower()})}\n\n"
         else:
             match = re.search(r'(Routing to|Transferring to) ([A-Z]+)', 
                               full_reply, re.IGNORECASE)
