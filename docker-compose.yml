@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  alfred:
+    build: ./agents/alfred
+    container_name: avengers-alfred
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./db:/avengers/db
+      - ./outputs/alfred:/avengers/outputs/alfred
+      - ./config.json:/avengers/config.json:ro
+      - ${GOOGLE_CREDENTIALS_PATH}:/avengers/credentials.json:ro
+      - ${GOOGLE_TOKEN_PATH}:/avengers/token.json:ro
+    restart: unless-stopped
+    depends_on:
+      - jarvis
+
+  jarvis:
+    build: ./agents/jarvis
+    container_name: jarvis
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./db:/avengers/db
+      - ./outputs/jarvis:/avengers/outputs/jarvis
+      - ./config.json:/avengers/config.json
+    restart: always
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+    restart: always
+
+networks:
+  default:
+    name: avengers-network

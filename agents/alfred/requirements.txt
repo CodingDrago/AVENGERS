@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+aiosqlite
+httpx
+google-genai>=1.0.0
+google-auth
+google-auth-oauthlib
+google-api-python-client
+apscheduler
+python-dateutil

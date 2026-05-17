@@ -1,0 +1,13 @@
+config.json
+credentials.json
+token.json
+token_alfred.json
+token_rhodey.json
+token_wong.json
+token_pepper.json
+db/
+outputs/
+__pycache__/
+*.pyc
+*.log
+.env

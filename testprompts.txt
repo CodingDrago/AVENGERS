@@ -1,0 +1,749 @@
+════════════════════════════════════════
+AVENGERS SYSTEM — AGENT TEST SUITE
+════════════════════════════════════════
+Run these tests in order: Easy → Medium → Hard → Hell.
+Each test is a real prompt to type into JARVIS.
+Expected output is listed so you know if it passed or failed.
+
+════════════════════════════════════════
+[1] JARVIS — Orchestrator
+════════════════════════════════════════
+
+EASY:
+  Prompt: "Hey JARVIS, are you online?"
+  Pass: Responds in character as JARVIS, mentions systems nominal,
+        no JSON visible, British tone, addresses you as Sir/Mr. Stark.
+  Fail: Returns raw JSON, crashes, or gives generic AI response.
+
+MEDIUM:
+  Prompt: "JARVIS what day is it and what is my current active model?"
+  Pass: Correctly states today's date AND pulls active model name
+        from /api-key-status, displays it naturally in sentence form.
+  Fail: Hardcoded date, wrong model name, or says it doesn't know.
+
+HARD:
+  Prompt: "JARVIS route this to the right agent — I need to log
+           ₹8000 income, check if my moisturizer is running low,
+           and find me a YouTube tutorial on React hooks."
+  Pass: JARVIS identifies 3 separate agents (WONG, PEPPER, FRIDAY),
+        routes each sub-task correctly, returns a combined response
+        from all three with clear labels for which agent said what.
+  Fail: Routes to only one agent, ignores sub-tasks, or crashes.
+
+HELL:
+  Prompt: "JARVIS I need you to simultaneously check my schedule
+           for tomorrow, critique my plan to drop out of college
+           and become a full-time freelance developer, generate 3
+           portfolio website concepts, and tell me what robotics
+           topic I should study this week — all at once."
+  Pass: Routes to ALFRED, XAVIER, VISION, and SHURI correctly.
+        Each agent's response appears labeled. XAVIER actually
+        pushes back on the dropout plan with real critique.
+        No timeouts, no crashes, all 4 responses received.
+  Fail: Partial routing, timeout, one agent's response missing,
+        or XAVIER just agrees with the plan.
+
+════════════════════════════════════════
+[2] ALFRED — Work Routine + Roadmap
+════════════════════════════════════════
+
+EASY:
+  Prompt: "ALFRED what are my tasks for today?"
+  Pass: Pulls from Google Tasks API, returns a real list with
+        task names. If no tasks exist, says "No tasks found today
+        Sir" — does NOT make up fake tasks.
+  Fail: Returns fake/hardcoded tasks or crashes with API error.
+
+MEDIUM:
+  Prompt: "ALFRED build me an optimized schedule for today based
+           on my tasks and sort them by deadline and effort."
+  Pass: Returns a time-blocked schedule with realistic time
+        estimates per task. Slots high-effort tasks in morning,
+        quick tasks later. Includes breaks.
+  Fail: Just lists tasks without scheduling, ignores effort scoring.
+
+HARD:
+  Prompt: "ALFRED build me a 4-week roadmap to launch a freelance
+           web development business from scratch. I have 3 hours
+           per day available."
+  Pass: Returns a structured week-by-week plan with specific
+        milestones, daily hour allocations, and ordered priorities.
+        Week 1 is different from Week 4. Not generic advice.
+  Fail: Returns generic tips, no week breakdown, or ignores the
+        3 hours/day constraint.
+
+HELL:
+  Prompt: "ALFRED I have 11 tasks due this week, a client call
+           Friday at 3pm, gym Monday Wednesday Friday, and I can
+           only work 4 hours on Tuesday because of a doctor
+           appointment. Build me the most optimal weekly schedule
+           accounting for all constraints and tell me which tasks
+           I should drop if I run out of time."
+  Pass: Produces a full Mon-Sun schedule respecting every stated
+        constraint. Correctly blocks Friday 3pm. Reduces Tuesday
+        to 4 hours. Ranks tasks by importance and explicitly names
+        which ones to cut if needed.
+  Fail: Ignores any single constraint, gives a generic schedule,
+        or doesn't address the drop list.
+
+════════════════════════════════════════
+[3] VISION — Design Ideation
+════════════════════════════════════════
+
+EASY:
+  Prompt: "VISION I want a dark minimal portfolio website."
+  Pass: Returns exactly 3 named design concepts each with:
+        color palette (hex codes), font pairing, layout description,
+        mood/vibe description. All 3 are clearly different from each other.
+  Fail: Returns 1 concept, returns generic advice, or no hex codes.
+
+MEDIUM:
+  Prompt: "VISION I want a SaaS landing page for a productivity
+           app targeting college students. Should feel energetic,
+           modern, and affordable. Not corporate."
+  Pass: 3 concepts clearly tailored to college students — none
+        look corporate. Color palettes are energetic (not navy/grey).
+        Font choices are modern not formal. Each concept feels
+        distinctly different in personality.
+  Fail: Generic SaaS concepts that could be for any business.
+
+HARD:
+  Prompt: "VISION the client wants a luxury real estate website.
+           Their brand colors are #1A1A2E and #C9A84C. The site
+           must feel premium, trustworthy, and modern. Target
+           audience is HNIs aged 45-65. Show me 3 concepts that
+           respect the brand colors but each takes a different
+           creative direction."
+  Pass: All 3 concepts use the provided colors as base.
+        Each takes a genuinely different direction (e.g. one
+        minimalist, one editorial, one architectural).
+        Font choices match the 45-65 HNI demographic.
+        Wireframe descriptions are detailed enough for STARK to use.
+  Fail: Ignores brand colors, all 3 concepts feel the same,
+        or wireframes are too vague.
+
+HELL:
+  Prompt: "VISION I need concepts for a website that serves two
+           completely opposite audiences on the same page — Gen Z
+           streetwear buyers and luxury fashion collectors. The
+           brand bridges both worlds. Give me 3 concepts that
+           solve this design paradox without alienating either
+           audience, and explain the psychological reasoning
+           behind each design decision."
+  Pass: 3 concepts each with a genuine creative solution to
+        the paradox — not a compromise but an actual bridge.
+        Each includes psychological/UX reasoning.
+        Color palettes are unconventional and justified.
+        STARK could actually build from these briefs.
+  Fail: Safe generic concepts, ignores the paradox, or the
+        two audiences aren't meaningfully addressed.
+
+════════════════════════════════════════
+[4] BANNER — n8n Automation Builder
+════════════════════════════════════════
+
+EASY:
+  Prompt: "BANNER create an automation that sends me a Telegram
+           message every morning at 8am saying Good Morning Sir."
+  Pass: Generates valid n8n workflow JSON with a Cron trigger
+        node at 8:00 and a Telegram node with the message.
+        POSTs it to local n8n. Returns workflow ID and a
+        confirmation that it was created successfully.
+  Fail: Returns JSON not posted to n8n, wrong node types,
+        or n8n returns an error.
+
+MEDIUM:
+  Prompt: "BANNER build an automation that monitors a specific
+           Gmail label called INVOICES and when a new email
+           arrives, extracts the sender name and subject and
+           sends me a Telegram notification with those details."
+  Pass: Workflow has Gmail trigger node watching the INVOICES
+        label, an expression to extract sender + subject,
+        and a Telegram node with dynamic message using those
+        variables. Workflow actually activates in n8n.
+  Fail: Static message without extracted variables, wrong
+        Gmail trigger config, or workflow fails to activate.
+
+HARD:
+  Prompt: "BANNER I want an automation that runs every Sunday
+           at 9pm, fetches my completed Google Tasks from the
+           past week, counts them, calculates my completion rate
+           vs total tasks, and sends me a weekly productivity
+           report on Telegram with the numbers."
+  Pass: Multi-node workflow: Cron (Sunday 9pm) → Google Tasks
+        node (fetch completed) → Function node (count + calculate
+        rate) → Telegram node with formatted report message.
+        All nodes connected correctly. Workflow saved and active.
+  Fail: Missing the calculation step, wrong cron schedule,
+        or incomplete node connections.
+
+HELL:
+  Prompt: "BANNER build a complete client onboarding automation.
+           When I add a contact to a specific Google Sheet with
+           columns Name, Email, ProjectType, Budget — it should:
+           1. Send them a welcome email via Gmail
+           2. Create a task in Google Tasks for me to follow up
+           3. Add them to a Notion database
+           4. Send me a Telegram alert with their details
+           5. Wait 3 days then send them a follow-up email
+           All automatically."
+  Pass: 5-branch workflow with correct triggers and all 5 actions
+        implemented. The 3-day delay is handled with a Wait node.
+        Workflow is named, documented, and saved to n8n.
+        Banner also writes it to workflows.md with a description.
+  Fail: Missing any of the 5 actions, wrong delay implementation,
+        or workflow not saved/documented.
+
+════════════════════════════════════════
+[5] STARK — Web Builder + GitHub
+════════════════════════════════════════
+
+EASY:
+  Prompt: "STARK create a simple single-page HTML portfolio site
+           with my name, a bio section, and a contact form.
+           Push it to a new GitHub repo called test-portfolio."
+  Pass: Opens Firebase Studio or Bolt.new via Playwright,
+        generates the site, downloads the code, creates a new
+        GitHub repo called test-portfolio, pushes the code,
+        sends you the repo URL via Telegram.
+  Fail: Site not pushed, wrong repo name, or Playwright fails
+        to open the tool.
+
+MEDIUM:
+  Prompt: "STARK take the first concept from VISION's last output
+           and build it as a responsive 3-page website: Home,
+           Projects, Contact. Use the exact colors and fonts
+           VISION specified."
+  Pass: Reads VISION's last output from SQLite/outputs folder.
+        Builds a 3-page site using those exact specs.
+        Site is responsive (works on mobile).
+        Pushed to GitHub with a meaningful commit message.
+  Fail: Ignores VISION's specs, builds only 1 page, or not
+        responsive.
+
+HARD:
+  Prompt: "STARK build a full SaaS landing page with a hero
+           section, features grid, pricing table with 3 tiers,
+           testimonials carousel, and a working email capture form
+           that stores submissions in a JSON file. Dark theme."
+  Pass: All 5 sections present and functional. Pricing table
+        has 3 distinct tiers. Carousel works with JS.
+        Email form writes to a local JSON file on submit.
+        Pushed to GitHub. Telegram notification sent on completion.
+  Fail: Missing sections, broken carousel, non-functional form,
+        or not pushed to GitHub.
+
+HELL:
+  Prompt: "STARK Firebase Studio is at 90% credits. Switch to
+           Bolt.new, continue building the e-commerce product
+           page that was in the task queue, receive the hero
+           image assets from NEBULA, integrate them into the
+           build, then push to the existing GitHub repo without
+           overwriting the previous commits."
+  Pass: Correctly detects credit warning, switches to Bolt.new,
+        finds the queued task in SQLite, builds the page,
+        waits for and integrates NEBULA's assets, pushes to
+        existing repo preserving history (git push not force push).
+        Sends Telegram with build summary.
+  Fail: Force pushes and overwrites history, doesn't switch tools,
+        ignores queued task, or drops NEBULA's assets.
+
+════════════════════════════════════════
+[6] NEBULA — Image + Asset Creator
+════════════════════════════════════════
+
+EASY:
+  Prompt: "NEBULA generate a dark abstract hero image with
+           geometric shapes and cyan tones for a tech website."
+  Pass: Image generated via Gemini Imagen API, saved to
+        /avengers/outputs/nebula/, file path returned,
+        image description logged. Actual image file exists.
+  Fail: No file created, API error, or placeholder returned.
+
+MEDIUM:
+  Prompt: "NEBULA I need 3 variations of a logo concept for a
+           brand called NOVA — minimalist, geometric, dark
+           background, electric blue accent color."
+  Pass: 3 distinct image files generated, each a genuine
+        variation (not identical). All saved with descriptive
+        filenames like nova-logo-v1.png. Paths sent to STARK
+        via HTTP notification.
+  Fail: 1 image instead of 3, all variations identical,
+        or STARK not notified.
+
+HARD:
+  Prompt: "NEBULA create a complete icon set of 8 icons for a
+           fitness app: run, lift, rest, nutrition, sleep, water,
+           heart rate, progress chart. All must have consistent
+           style: line icons, white on dark, 512x512px."
+  Pass: 8 image files generated, all with consistent visual
+        style, correct naming convention, all 512x512,
+        saved to outputs/nebula/icon-set/ subfolder.
+  Fail: Inconsistent styles, wrong sizes, missing icons,
+        or wrong folder structure.
+
+HELL:
+  Prompt: "NEBULA STARK needs assets for a full website build
+           RIGHT NOW: hero image (dark, abstract, 1920x1080),
+           3 feature section illustrations (light bg, isometric),
+           1 team photo placeholder (professional, diverse),
+           2 testimonial avatars, and a favicon (32x32).
+           Generate all 8 assets, organize them in a structured
+           folder, create an assets-manifest.json with file paths
+           and dimensions, then notify STARK they are ready."
+  Pass: All 8 assets generated and saved. Folder structure is
+        organized (hero/, illustrations/, avatars/, favicon/).
+        assets-manifest.json created with correct metadata.
+        STARK receives HTTP POST /assets-ready with manifest.
+        STARK notified via Telegram too.
+  Fail: Missing any asset, no manifest, wrong dimensions on
+        hero or favicon, or STARK not notified.
+
+════════════════════════════════════════
+[7] COULSON — System Installer
+════════════════════════════════════════
+
+EASY:
+  Prompt: "COULSON run a health check on all agents."
+  Pass: Returns a status report for all 13 agents showing
+        which are READY and which are MISSING dependencies.
+        Format is clear, uses agent codenames, no crashes.
+  Fail: Crashes, returns empty response, or checks only
+        some agents.
+
+MEDIUM:
+  Prompt: "COULSON install playwright and verify it works
+           by opening a headless browser and returning the
+           title of google.com"
+  Pass: Installs playwright if not present (pip install),
+        runs playwright chromium, navigates to google.com,
+        returns the page title. Logs install to install.log.
+  Fail: Install fails silently, browser doesn't open, or
+        wrong page title returned.
+
+HARD:
+  Prompt: "COULSON verify the complete dependency manifest
+           for STARK agent — check every single library,
+           CLI tool, and browser driver it needs. Install
+           anything missing and return a before/after report."
+  Pass: Checks all STARK dependencies (playwright, httpx,
+        github CLI, chromium driver etc.), identifies which
+        are missing, installs them, returns a diff report
+        showing what was missing vs what is now installed.
+        install.log updated with timestamps.
+  Fail: Misses any dependency, doesn't install missing ones,
+        or no before/after diff.
+
+HELL:
+  Prompt: "COULSON the entire system is being deployed on a
+           fresh Ubuntu machine. Install everything needed
+           for all 13 agents from scratch: Python packages,
+           npm packages, system packages via apt, Ollama,
+           Playwright browsers, GitHub CLI, and verify each
+           one works after install. Generate a full deployment
+           report and send it to me on Telegram."
+  Pass: Complete installation runs without manual intervention.
+        Every agent's dependencies installed. Each verified
+        with a smoke test. Full report generated with pass/fail
+        per item. Telegram message sent with summary.
+        Total time under 15 minutes on a standard connection.
+  Fail: Any agent left with missing deps, no verification step,
+        report not generated, or Telegram not sent.
+
+════════════════════════════════════════
+[8] PEPPER — Personal Routine + Inventory
+════════════════════════════════════════
+
+EASY:
+  Prompt: "PEPPER I used my face wash this morning."
+  Pass: Updates the face wash last_used timestamp in SQLite,
+        decrements quantity by one usage unit, confirms update
+        with "Noted Sir, face wash logged for this morning."
+  Fail: Doesn't update DB, no confirmation, or crashes.
+
+MEDIUM:
+  Prompt: "PEPPER what is my current skincare routine and
+           which products are running low?"
+  Pass: Returns the full skincare routine from SQLite with
+        last used dates and quantity remaining for each product.
+        Items below 20% are clearly flagged as LOW STOCK.
+        Shopping list items already in Google Keep are noted.
+  Fail: Returns empty or fake data, doesn't flag low stock,
+        or doesn't check Google Keep.
+
+HARD:
+  Prompt: "PEPPER add a new product called Niacinamide Serum,
+           I use it every evening, I have a full bottle which
+           I estimate at 60 uses. Set a low stock alert at 12
+           uses remaining. Also add it to my Sunday skincare
+           routine."
+  Pass: Product created in SQLite with correct fields.
+        Usage frequency set to evening daily.
+        Total uses set to 60, alert threshold 12 (20%).
+        Sunday routine updated to include the product.
+        Confirmation returned with all details.
+  Fail: Product not saved, wrong alert threshold calculated,
+        or routine not updated.
+
+HELL:
+  Prompt: "PEPPER do a full audit of all my personal care
+           products. For everything below 20%, add it to my
+           Google Keep shopping list with estimated restock
+           quantity based on my usage rate. Then calculate
+           how many days each product has left before running
+           out based on my logged usage frequency, and give
+           me a restock priority list ordered by days remaining.
+           Send the priority list to Telegram."
+  Pass: Full audit runs across all product categories.
+        Days remaining calculated correctly for each.
+        Low stock items added to Google Keep with quantities.
+        Priority list sorted by days remaining (lowest first).
+        Telegram message sent with the list.
+        All data sourced from real SQLite records not hardcoded.
+  Fail: Days calculation wrong, Google Keep not updated,
+        priority order incorrect, or Telegram not sent.
+
+════════════════════════════════════════
+[9] XAVIER — Mind Sharpener
+════════════════════════════════════════
+
+EASY:
+  Prompt: "XAVIER I think social media is bad for productivity."
+  Pass: Xavier challenges the statement — finds at least 2
+        strong counterarguments, identifies which cognitive
+        bias might be behind the opinion (e.g. availability
+        bias, confirmation bias), and suggests a more nuanced
+        framing. Does NOT just agree.
+  Fail: Xavier agrees with the statement, gives generic advice,
+        or doesn't identify any cognitive bias.
+
+MEDIUM:
+  Prompt: "XAVIER I'm deciding between taking a ₹40,000/month
+           job offer vs continuing freelancing where I make
+           ₹25,000-₹60,000/month inconsistently. I want to
+           choose the job for stability."
+  Pass: Xavier gives structured analysis: logical gaps in the
+        reasoning (ignoring upside of freelancing), cognitive
+        biases (loss aversion, present bias), unstated assumptions
+        (that stability = job security), strongest counterarguments
+        to both sides, and 3 concrete ways to sharpen the decision.
+        Does NOT just validate the job choice.
+  Fail: Generic pro/con list, validates the job without challenge,
+        or doesn't identify biases.
+
+HARD:
+  Prompt: "XAVIER here is my complete business plan for a
+           SaaS product. [paste a 300-word plan]. Tear it apart."
+  Pass: Xavier identifies specific logical gaps in the plan,
+        names the exact cognitive biases at play (overconfidence
+        bias, planning fallacy, etc.), lists the 3 strongest
+        reasons the plan could fail that the user hasn't
+        considered, and gives 3 concrete improvements.
+        Critique is specific to the plan — not generic startup advice.
+  Fail: Generic feedback, agrees the plan is good, or doesn't
+        reference specific parts of the plan.
+
+HELL:
+  Prompt: "XAVIER I have been thinking about this for months.
+           I want to drop out of college in my final year,
+           move to Bangalore, start a web agency with ₹50,000
+           savings, no clients yet, no co-founder, while also
+           learning robotics on the side. I think the timing
+           is perfect because the market is hot right now.
+           Tell me if I'm thinking clearly."
+  Pass: Xavier performs deep multi-layered critique:
+        identifies at least 5 distinct cognitive biases
+        (timing fallacy, survivorship bias, planning fallacy,
+        overconfidence, sunk cost regarding final year).
+        Challenges every major assumption with evidence-based
+        reasoning. Points out the internal contradiction
+        (agency + robotics learning simultaneously).
+        Gives 3 alternative framings that don't require
+        dropping out. Does NOT validate the plan.
+        Session saved to /outputs/xavier/ for future review.
+  Fail: Validates the plan, misses obvious biases, gives
+        motivational advice instead of critique, or doesn't
+        challenge the final-year dropout specifically.
+
+════════════════════════════════════════
+[10] FRIDAY — Software Learning
+════════════════════════════════════════
+
+EASY:
+  Prompt: "FRIDAY find me the best videos on CSS flexbox."
+  Pass: Returns 5 real YouTube video results via YouTube
+        Data API — real titles, real channel names, real
+        view counts, real URLs. Filters applied: 50k+ views,
+        last 2 years, 10-60 mins. Not made up.
+  Fail: Fake/hallucinated video titles, no real URLs,
+        or fewer than 5 results.
+
+MEDIUM:
+  Prompt: "FRIDAY find videos on React hooks, summarize the
+           top 3 into structured notes with key concepts,
+           code snippets mentioned, and main takeaways."
+  Pass: 3 real videos found. Each summarized using their
+        YouTube transcript via API. Notes include: video title,
+        channel, key concepts as bullet points, at least 1
+        code snippet extracted, 3 takeaways. Saved as markdown
+        to /outputs/friday/react-hooks/notes.md
+  Fail: Notes are generic not transcript-based, no code
+        snippets, file not saved, or transcripts not used.
+
+HARD:
+  Prompt: "FRIDAY I am learning full-stack development.
+           Build me a structured 8-week curriculum with the
+           best YouTube resources for each week, starting
+           from HTML/CSS basics and ending at deploying a
+           full-stack app. Each week should have 2-3 videos."
+  Pass: 8-week curriculum with real videos per week.
+        Week 1 is genuinely foundational, Week 8 genuinely
+        advanced. Real video URLs verified via YouTube API.
+        Saved to /outputs/friday/fullstack-curriculum/
+        as a structured markdown document.
+  Fail: Fake videos, weeks aren't progressive, fewer than
+        2 videos per week, or not saved to file.
+
+HELL:
+  Prompt: "FRIDAY I have a technical interview at a product
+           company in 7 days. Topics: DSA, system design,
+           React, Node.js, and SQL. Find the single best
+           video resource for each topic, extract the full
+           notes from each transcript, create a NotebookLM
+           notebook called Interview Prep 2026, upload all
+           5 sets of notes into it, and send me a Telegram
+           message with the NotebookLM link and a 7-day
+           study schedule."
+  Pass: 5 real videos found, one per topic.
+        Full transcript notes extracted for all 5.
+        NotebookLM opened via Playwright, notebook created,
+        notes uploaded to it.
+        7-day schedule generated mapping topics to days.
+        Telegram sent with NotebookLM URL and schedule.
+        All notes saved locally too.
+  Fail: Missing any topic, NotebookLM not opened, schedule
+        not generated, or Telegram not sent.
+
+════════════════════════════════════════
+[11] SHURI — ECE + Robotics Learning
+════════════════════════════════════════
+
+EASY:
+  Prompt: "SHURI what should I learn first if I want to
+           become a robotics engineer?"
+  Pass: Returns a structured starting roadmap specific to
+        robotics engineering: electronics fundamentals →
+        microcontrollers → programming → ROS → etc.
+        Pulls from SQLite if a roadmap exists, or generates
+        one. Not generic "learn Python" advice.
+  Fail: Generic advice, no roadmap structure, or doesn't
+        mention robotics-specific tools like ROS.
+
+MEDIUM:
+  Prompt: "SHURI find me the best videos on Arduino for
+           beginners and summarize the top 2 into notes."
+  Pass: Real YouTube videos found via API for Arduino
+        beginner content. Top 2 summarized from transcripts.
+        Notes include circuit concepts, code examples,
+        components mentioned. Saved to /outputs/shuri/arduino/
+  Fail: Same as FRIDAY medium test failure criteria.
+
+HARD:
+  Prompt: "SHURI I know basic electronics and C++. Build
+           me a 12-week learning roadmap to get from where
+           I am to being able to build a basic autonomous
+           robot using ROS2. Include specific YouTube resources
+           for each week and mark which weeks involve hardware
+           vs software focus."
+  Pass: 12-week roadmap is technically accurate and builds
+        progressively. ROS2 introduced at the right point
+        (not week 1). Hardware/software weeks clearly marked.
+        Real YouTube resources per week. Saved to SQLite
+        roadmap tracker AND as markdown file.
+  Fail: Technically inaccurate progression, ROS2 too early,
+        no hardware/software distinction, or fake resources.
+
+HELL:
+  Prompt: "SHURI I need to prepare for a robotics engineering
+           internship interview covering: circuit analysis,
+           embedded C, ROS2 basics, computer vision with
+           OpenCV, and control systems PID. Find the best
+           resource for each, extract notes, create a
+           NotebookLM notebook called Robotics Interview Prep,
+           upload notes, update my learning roadmap in SQLite
+           to mark these as in-progress topics, and send me
+           a Telegram with the prep schedule and notebook link."
+  Pass: All 5 topics covered with real resources.
+        Notes extracted from transcripts.
+        NotebookLM notebook created and populated.
+        SQLite roadmap updated with in-progress flags.
+        Telegram sent with schedule and link.
+  Fail: Same failure criteria as FRIDAY hell test.
+
+════════════════════════════════════════
+[12] RHODEY — Health + Wellness
+════════════════════════════════════════
+
+EASY:
+  Prompt: "RHODEY what is my step count today?"
+  Pass: Pulls real data from Google Fit API for today.
+        Returns actual step count with timestamp of last sync.
+        If Google Fit has no data, says so clearly —
+        does NOT return a fake number.
+  Fail: Returns fake/hardcoded number, crashes, or no
+        timestamp on the data.
+
+MEDIUM:
+  Prompt: "RHODEY give me my health summary for this week —
+           steps, sleep, and active minutes each day."
+  Pass: Returns a day-by-day breakdown for the current week
+        with real data from Google Fit. Days with no data
+        show as "No data" not zero or fake values.
+        Includes weekly averages at the bottom.
+  Fail: Hardcoded values, no per-day breakdown, or averages
+        calculated incorrectly.
+
+HARD:
+  Prompt: "RHODEY analyze my last 30 days of health data
+           and tell me if there are any patterns — specifically
+           whether my sleep quality correlates with my step
+           count or active minutes."
+  Pass: Pulls 30 days from Google Fit. Uses Gemini to
+        analyze the correlation. Returns specific observations
+        (e.g. "You sleep better on days with 8000+ steps")
+        with dates cited as evidence. Not generic health advice.
+  Fail: Generic advice, no correlation analysis, data not
+        pulled from real API, or dates not cited.
+
+HELL:
+  Prompt: "RHODEY do a complete health audit for this month.
+           Find my best day and worst day by combined score
+           of steps + sleep + active minutes. Identify my
+           3 worst habits based on the data. Calculate whether
+           I am trending up or down vs last month. Send me
+           a detailed report on Telegram and also tell ALFRED
+           to adjust next week's schedule to include more
+           recovery time based on my current fatigue indicators."
+  Pass: Full month audit with best/worst days identified
+        with actual dates and scores. 3 habits from data
+        not generic. Month-over-month trend calculated.
+        Telegram report sent with all details.
+        ALFRED receives HTTP call with fatigue context and
+        actually adjusts next week's schedule.
+  Fail: Missing any section, generic habits not data-derived,
+        ALFRED not called, or Telegram not sent.
+
+════════════════════════════════════════
+[13] WONG — Finance + Income Tracker
+════════════════════════════════════════
+
+EASY:
+  Prompt: "WONG log ₹5000 income from client Arjun for a
+           logo design project."
+  Pass: Entry written to Google Sheet with: date, amount,
+        client name, project type (categorized as Design),
+        income type (Freelance). Running total updated.
+        Confirmation returned with the row that was written.
+  Fail: Not written to sheet, wrong categorization, or
+        no confirmation.
+
+MEDIUM:
+  Prompt: "WONG what is my total income and total expenses
+           for this month and what is my net?"
+  Pass: Reads real data from Google Sheet.
+        Returns: total income, total expenses, net amount.
+        Breakdown by category if available.
+        All numbers match what is actually in the sheet.
+  Fail: Hardcoded values, wrong math, or doesn't read
+        from real sheet.
+
+HARD:
+  Prompt: "WONG I have 3 unpaid invoices — client Priya
+           owes ₹15,000 since 15 days ago, client Rahul
+           owes ₹8,000 since 32 days ago, and client TechCo
+           owes ₹45,000 since 8 days ago. Log all three,
+           flag Rahul's as overdue since it's past 30 days,
+           and send me reminders for all three ranked by
+           amount owed."
+  Pass: All 3 logged to Google Sheet with correct dates
+        and amounts. Rahul's entry flagged as OVERDUE.
+        Reminders ranked by amount (TechCo first).
+        Telegram sent with the ranked reminder list.
+  Fail: Any entry missing, wrong overdue flag, wrong ranking,
+        or no Telegram.
+
+HELL:
+  Prompt: "WONG do a complete financial audit for this year
+           so far. Calculate: total income by month, total
+           expenses by month, net profit by month, best month,
+           worst month, my top 3 income sources by client,
+           my biggest expense category, and whether I am on
+           track to hit ₹6,00,000 annual income. Also flag
+           any client who has owed me money for more than
+           30 days and send the full audit report to Telegram
+           as a formatted summary."
+  Pass: All calculations correct and sourced from real
+        Google Sheet data. Month-by-month breakdown accurate.
+        Annual target tracking calculated correctly
+        (e.g. 4 months in = need ₹2,00,000 to be on track).
+        Overdue clients flagged by name and days outstanding.
+        Telegram message is formatted and readable not a
+        raw data dump.
+  Fail: Any calculation wrong, annual target tracking missing,
+        overdue clients not flagged, or Telegram report
+        unformatted/missing.
+
+════════════════════════════════════════
+CROSS-AGENT INTEGRATION TESTS
+════════════════════════════════════════
+Run these after all individual agents pass Hard level.
+
+INTEGRATION TEST 1 — VISION → STARK → NEBULA:
+  Prompt: "I need a complete dark portfolio website built end
+           to end right now."
+  Pass: VISION generates 3 concepts → user picks one →
+        NEBULA generates hero image → STARK builds the site
+        using VISION's brief and NEBULA's assets → pushes
+        to GitHub → Telegram notification with repo URL.
+        Full pipeline completes without manual intervention.
+
+INTEGRATION TEST 2 — ALFRED + RHODEY:
+  Prompt: "ALFRED build me tomorrow's schedule but check
+           with RHODEY first to see if I need a rest day."
+  Pass: ALFRED calls RHODEY, gets today's fatigue indicators,
+        if high fatigue → schedule includes rest + light tasks.
+        If normal → full productive schedule. Decision is
+        explained in the response.
+
+INTEGRATION TEST 3 — XAVIER + VISION:
+  Prompt: "I want to build a fintech app for college students.
+           XAVIER tear apart the idea first, then VISION give
+           me design concepts that address Xavier's critiques."
+  Pass: XAVIER critiques the idea with specific concerns.
+        VISION's 3 concepts each explicitly address one of
+        Xavier's critique points. The pipeline is coherent —
+        VISION actually read Xavier's output.
+
+INTEGRATION TEST 4 — FRIDAY + ALFRED:
+  Prompt: "FRIDAY find me a 2-hour React course for this week
+           and ALFRED schedule 2 study sessions for it."
+  Pass: FRIDAY finds a real 2-hour course.
+        ALFRED checks the calendar, finds 2 available slots,
+        creates Google Calendar events for each session with
+        the course title as the event name.
+
+INTEGRATION TEST 5 — HELL MODE FULL SYSTEM:
+  Prompt: "It is Sunday evening. ALFRED give me my week ahead,
+           RHODEY tell me if I need recovery time, PEPPER check
+           what I need to restock, WONG tell me if any invoices
+           are overdue, XAVIER critique my plan to take on 2
+           new clients this week on top of my existing workload,
+           and FRIDAY find me one thing to learn this week that
+           will directly improve my freelance income."
+  Pass: All 6 agents respond correctly. Each response is
+        labeled by agent. No agent crashes. The responses
+        are coherent with each other — if RHODEY says rest
+        is needed, ALFRED's schedule reflects that. Total
+        response time under 60 seconds.
+  Fail: Any agent fails, responses are unlabeled, or
+        agents ignore each other's context.

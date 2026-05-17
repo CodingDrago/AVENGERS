@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+google-genai>=1.0.0
+httpx
+jinja2
+python-multipart
+aiosqlite

@@ -1,0 +1,2210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS MARK VII · HUD</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --agent-primary: #00c8ff;
+            --green: #00ffb4;
+            --amber: #ffa030;
+            --red: #ff4060;
+            --bg: #000000;
+            --panel-bg: rgba(0, 10, 25, 0.75);
+            --border-color: rgba(0, 200, 255, 0.25);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            background-color: var(--bg);
+            color: var(--agent-primary);
+            font-family: 'Share Tech Mono', monospace;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            user-select: none;
+        }
+
+        /* --- BACKGROUND GRIDS --- */
+        #grid-layer-1 {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background-image:
+                linear-gradient(rgba(0,200,255,0.18) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,200,255,0.18) 1px, transparent 1px);
+            background-size: 40px 40px;
+            animation: gridPulse 6s ease-in-out infinite;
+        }
+        #grid-layer-2 {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background-image:
+                linear-gradient(rgba(0,200,255,0.10) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,200,255,0.10) 1px, transparent 1px);
+            background-size: 200px 200px;
+        }
+        @keyframes gridPulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+
+        #hex-grid {
+            position: fixed; inset: 0; z-index: 1; opacity: 0.04;
+            background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iMTA0IiB2aWV3Qm94PSIwIDAgNjAgMTA0IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxwYXRoIGQ9Ik0zMCAwdTAtLjVMNjAgMjUuNXY1M0wzMCAxMDQuNSAwIDc4LjV2LTUzbDMwLTI2eiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDBjOGZmMDA1IiBzdHJva2Utd2lkdGg9IjEiLz48L3N2Zz4=');
+            background-size: 60px 104px;
+        }
+
+        #particles-canvas { position: fixed; inset: 0; z-index: 1; opacity: 0.5; }
+
+        .vignette {
+            position: fixed; inset: 0; z-index: 2;
+            background: radial-gradient(circle, transparent 40%, rgba(0,0,0,0.8) 100%);
+            pointer-events: none;
+        }
+
+        .scanline {
+            position: fixed; left: 0; width: 100%; height: 1px;
+            background: rgba(0, 200, 255, 0.2); box-shadow: 0 0 10px var(--agent-primary);
+            animation: scan 8s linear infinite; z-index: 101; pointer-events: none;
+        }
+        @keyframes scan { 0% { top: 0; } 100% { top: 110%; } }
+
+        #ui-wrapper { 
+            position: relative; z-index: 10; height: 100vh; width: 100%; 
+            display: flex; flex-direction: column; overflow: hidden;
+            animation: flicker 12s infinite; transition: opacity 0.5s ease-in-out; 
+        }
+        @keyframes flicker { 0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; } 20%, 24%, 55% { opacity: 0.98; } }
+
+        /* --- AMBIENT MODE --- */
+        .ambient-mode #ui-wrapper { opacity: 0.4; transition: opacity 2s ease-in-out; }
+        .ambient-mode .arc-core { animation: core-pulse 4s infinite ease-in-out; }
+
+        /* --- BRIGHTNESS TIERS --- */
+        .tier-1 { opacity: 0.45; color: var(--agent-primary); }
+        .tier-2 { opacity: 0.75; color: var(--agent-primary); }
+        .tier-3 { opacity: 1.0; color: var(--agent-primary); text-shadow: 0 0 8px var(--agent-primary); }
+
+        /* --- HEADER --- */
+        header {
+            height: 45px; border-bottom: 1px solid rgba(0, 200, 255, 0.2);
+            display: flex; align-items: center; padding: 0 20px; justify-content: space-between;
+            backdrop-filter: blur(4px); background: rgba(0,0,0,0.4);
+            z-index: 100;
+        }
+        .header-left { font-family: 'Orbitron', sans-serif; font-weight: 900; letter-spacing: 2px; }
+        #clock { font-family: 'Share Tech Mono', monospace; font-size: 1.1rem; }
+        
+        #model-menu {
+            position: fixed;
+            z-index: 9999;
+            top: 45px;
+            background: rgba(0, 10, 25, 0.98);
+            border: 1px solid rgba(0,200,255,0.3);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8), 0 0 20px rgba(0,200,255,0.1);
+            display: none;
+            min-width: 240px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        /* --- MAIN HUD --- */
+        main {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 180px minmax(0, 1fr) 180px;
+            gap: 15px;
+            padding: 15px;
+            min-height: 0;
+            overflow: hidden;
+            transition: all 0.5s ease-in-out;
+        }
+
+        /* --- PANELS --- */
+        .panel {
+            background: var(--panel-bg); border: 1px solid var(--border-color);
+            backdrop-filter: blur(4px); position: relative; display: flex; flex-direction: column;
+            box-shadow: inset 0 0 15px rgba(0, 200, 255, 0.05);
+            z-index: 1;
+            min-height: 0;
+        }
+
+        .panel::before, .panel::after { content: ''; position: absolute; width: 12px; height: 12px; border-color: var(--agent-primary); border-style: solid; opacity: 1; z-index: 5; }
+        .panel::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+        .panel::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+        .panel-top-glow { position: absolute; top: -1px; left: 0; width: 100%; height: 1px; background: linear-gradient(90deg, transparent, var(--agent-primary), transparent); }
+
+        .panel-title {
+            font-family: 'Orbitron', sans-serif; font-size: 9px; padding: 8px; margin-bottom: 10px;
+            text-transform: uppercase; letter-spacing: 3px; border-bottom: 1px solid var(--border-color);
+        }
+
+        /* --- LEFT COLUMN --- */
+        .agent-list { flex: 1; overflow-y: auto; scrollbar-width: none; }
+        .agent-item {
+            padding: 8px 10px; border-bottom: 1px solid rgba(0,200,255,0.05); cursor: pointer;
+            display: flex; justify-content: space-between; align-items: center; transition: 0.2s;
+        }
+        .agent-item:hover { background: rgba(0, 200, 255, 0.1); }
+        .dot { width: 6px; height: 6px; border-radius: 50%; }
+        .dot-ACTIVE { background: var(--green); box-shadow: 0 0 8px var(--green); }
+        .dot-IDLE { background: var(--agent-primary); opacity: 0.45; }
+        .dot-BUILDING { background: var(--amber); animation: pulse 1s infinite; }
+        .dot-ALERT { background: var(--red); animation: pulse 0.5s infinite; }
+
+        /* --- CENTER COLUMN --- */
+        section.panel.chat-panel {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            overflow: hidden;
+            min-height: 0;
+            min-width: 0;
+        }
+
+        #messages-container {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-height: 0;
+            word-break: break-word;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(0,200,255,0.3) transparent;
+        }
+        #messages-container::-webkit-scrollbar { width: 4px; }
+        #messages-container::-webkit-scrollbar-thumb { background: var(--agent-primary); border-radius: 10px; }
+
+        .msg {
+            max-width: 75%;
+            width: fit-content;
+            padding: 10px 14px;
+            border-radius: 4px;
+            line-height: 1.6;
+            font-size: 0.9rem;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            word-break: break-word;
+        }
+        .msg-user { align-self: flex-end; border-right: 2px solid var(--agent-primary); background: rgba(0, 200, 255, 0.08); }
+        .msg-jarvis { align-self: flex-start; border-left: 2px solid var(--green); background: rgba(0, 255, 180, 0.08); }
+
+        .waveform-area { height: 40px; display: flex; border-top: 1px solid var(--border-color); }
+        #waveform { width: 100%; height: 100%; }
+
+        .input-row { height: 50px; display: flex; border-top: 1px solid var(--border-color); position: relative; overflow: hidden; width: 100%; }
+        #chat-input { flex:1; width: 100%; min-width: 0; background:transparent; border:none; color:var(--agent-primary); padding:0 15px; font-family:inherit; outline:none; z-index:2; position:relative; overflow-x: auto; text-overflow: clip; white-space: nowrap; }
+        .btn-transmit { 
+            background: rgba(0, 200, 255, 0.15); border: 1px solid rgba(0, 200, 255, 0.5); 
+            color: var(--agent-primary); padding: 0 20px; font-family: 'Share Tech Mono'; 
+            letter-spacing: 2px; cursor: pointer; transition: 0.3s; z-index: 5;
+        }
+        .btn-transmit:hover { background: rgba(0, 200, 255, 0.3); box-shadow: 0 0 15px var(--agent-primary); }
+
+        #abort-btn, #interrupt-btn { display: none; border-color: var(--amber); color: var(--amber); }
+        #abort-btn:hover, #interrupt-btn:hover { background: rgba(255, 160, 48, 0.15); box-shadow: 0 0 15px var(--amber); }
+
+        .metric-tiles { height: 60px; display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid var(--border-color); }
+        .tile { display: flex; flex-direction: column; align-items: center; justify-content: center; border-right: 1px solid var(--border-color); }
+        .tile:last-child { border-right: none; }
+        .tile-label { font-size: 9px; letter-spacing: 1px; margin-bottom: 2px; }
+
+        /* --- RIGHT COLUMN --- */
+        .arc-panel { height: 180px; align-items: center; justify-content: center; }
+        .arc-container { width: 90px; height: 90px; position: relative; transition: all 0.5s ease-in-out; }
+        .arc-ring { position: absolute; border: 2px solid var(--agent-primary); border-radius: 50%; opacity: 0.5; }
+        .r1 { inset: 0; border-style: dashed; animation: spin 10s linear infinite; }
+        .r2 { inset: 12px; border-width: 3px; border-color: var(--agent-primary) transparent; animation: spin-rev 5s linear infinite; }
+        .r3 { inset: 24px; border-style: double; border-width: 4px; animation: spin 3s linear infinite; }
+        .arc-core { position: absolute; inset: 34px; background: radial-gradient(circle, #fff 0%, var(--agent-primary) 70%); border-radius: 50%; box-shadow: 0 0 25px var(--agent-primary); animation: core-pulse 2s infinite ease-in-out; }
+        @keyframes core-pulse { 0%, 100% { transform: scale(0.9); opacity: 0.8; } 50% { transform: scale(1.1); opacity: 1; } }
+
+        .load-bars { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .bar-group { display: flex; flex-direction: column; gap: 3px; }
+        .bar-label { display: flex; justify-content: space-between; }
+        .label-text { font-size: 9px; color: var(--agent-primary); opacity: 0.5; letter-spacing: 1px; text-transform: uppercase; }
+        .value-text { font-size: 9px; color: var(--agent-primary); opacity: 0.8; text-align: right; }
+        .bar-track { height: 2px; background: rgba(0, 200, 255, 0.1); border-radius: 2px; width: 100%; position: relative; }
+        .bar-fill { height: 2px; background: var(--agent-primary); box-shadow: 0 0 4px var(--agent-primary); border-radius: 2px; transition: width 0.5s ease; }
+        .bar-fill.red-pulse { background: var(--red); box-shadow: 0 0 12px var(--red); animation: pulse 1s infinite; }
+        .bar-fill.sim { opacity: 0.5; }
+
+        /* --- SPEAKING MODE --- */
+        .speaking-mode .arc-container { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(1.77); z-index: 500; width: 160px; height: 160px; }
+        .speaking-mode main { grid-template-columns: 140px 1fr 140px; }
+
+        /* --- MODAL --- */
+        #modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 2000;
+            display: none; align-items: center; justify-content: center;
+        }
+        .modal-card { 
+            width: 450px; padding: 30px; background: rgba(0,10,25,0.95); border: 1px solid var(--agent-primary);
+            box-shadow: 0 0 30px rgba(0,200,255,0.2);
+        }
+        .modal-btn { flex: 1; padding: 12px; border: 1px solid; cursor: pointer; background: transparent; transition: 0.2s; font-family: Orbitron; font-size: 10px; text-align: center; }
+        .modal-btn:hover { background: rgba(255,255,255,0.05); }
+        
+        .cmd-item:hover { background: rgba(0,200,255,0.1); }
+
+        /* --- BOOT --- */
+        #boot-overlay {
+            position: fixed; inset: 0; background: #000; z-index: 3000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 1s ease;
+        }
+        .boot-title { font-family: 'Orbitron'; font-size: 3rem; font-weight: 900; color: var(--agent-primary); text-shadow: 0 0 20px var(--agent-primary); margin-bottom: 10px; }
+
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes spin-rev { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    </style>
+</head>
+<body>
+    <div id="grid-layer-1"></div>
+    <div id="grid-layer-2"></div>
+    <div id="hex-grid"></div>
+    <canvas id="particles-canvas"></canvas>
+    <div class="vignette"></div>
+    <div class="scanline"></div>
+
+    <div id="boot-overlay">
+        <div class="boot-title">STARK INDUSTRIES</div>
+        <div class="tier-1" style="font-family:Orbitron; letter-spacing:5px; margin-bottom:50px;">JARVIS MARK VII · INITIALIZING</div>
+        <div style="width:400px; height:2px; background:rgba(255,255,255,0.05); position:relative; margin-bottom:20px;">
+            <div id="boot-bar" style="width:0%; height:100%; background:var(--agent-primary); box-shadow:0 0 15px var(--agent-primary);"></div>
+        </div>
+        <div id="boot-status" class="tier-1" style="font-size:10px; letter-spacing:2px;">LOADING CORE SYSTEMS...</div>
+    </div>
+
+    <div id="ui-wrapper">
+        <header>
+            <div class="header-left tier-2">JARVIS // HUD</div>
+            <div id="clock" class="tier-3">00:00:00 · 14 MAY 2026</div>
+            <div id="model-switcher" style="display:flex;gap:6px;align-items:center;">
+                <span style="font-size:8px;opacity:0.4;letter-spacing:2px;">MODEL:</span>
+                <div id="active-model-badge"
+                     style="font-size:9px;padding:3px 8px;border:1px solid rgba(0,200,255,0.4);
+                            color:var(--agent-primary);cursor:pointer;letter-spacing:1px;
+                            position:relative;"
+                     onclick="toggleModelMenu()">
+                  LOADING...
+                </div>
+                <div id="model-menu" style="display:none;position:absolute;top:45px;right:200px;
+                     background:rgba(0,10,25,0.98);border:1px solid rgba(0,200,255,0.3);
+                     z-index:500;min-width:220px;">
+                </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button onclick="toggleFullscreen()"
+                        style="background:transparent;border:1px solid rgba(0,200,255,0.3);
+                               color:rgba(0,200,255,0.5);font-family:'Share Tech Mono';
+                               font-size:9px;letter-spacing:2px;padding:3px 8px;cursor:pointer;"
+                        title="Toggle fullscreen">
+                    ⛶ FULLSCREEN
+                </button>
+                <div class="header-right tier-2" style="font-size:9px; letter-spacing:2px;">NETWORK: ONLINE · MK VII</div>
+            </div>
+        </header>
+
+        <main id="main-hud">
+            <section style="display:flex; flex-direction:column; gap:15px;">
+                <div class="panel" style="flex:1;">
+                    <div class="panel-top-glow"></div>
+                    <div class="panel-title tier-1">Agent Roster</div>
+                    <div class="agent-list" id="agent-list"></div>
+                </div>
+                <div class="panel" id="threat-panel" style="height:150px;">
+                    <div class="panel-top-glow"></div>
+                    <div class="panel-title tier-1">Threat Analysis</div>
+                    <div style="flex:1; display:flex; align-items:center; justify-content:center; position:relative;">
+                        <svg width="80" height="80" viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(0,200,255,0.4)" stroke-width="1" stroke-dasharray="10 5">
+                                <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="10s" repeatCount="indefinite" />
+                            </circle>
+                            <text id="threat-text" x="50" y="54" text-anchor="middle" fill="var(--green)" font-size="9" font-family="Orbitron" class="tier-3">NORMAL</text>
+                        </svg>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel chat-panel">
+                <div class="panel-top-glow"></div>
+                <div style="display:flex;justify-content:space-between;
+                            align-items:center;padding:8px;margin-bottom:10px;
+                            border-bottom:1px solid var(--border-color);">
+                    <span class="panel-title tier-1"
+                          style="padding:0;margin:0;border:none;">
+                        Command Interface
+                    </span>
+                    <button id="history-btn"
+                            onclick="toggleHistory()"
+                            style="font-size:8px;letter-spacing:2px;
+                                   background:transparent;
+                                   border:1px solid rgba(0,200,255,0.3);
+                                   color:rgba(0,200,255,0.5);
+                                   padding:3px 8px;cursor:pointer;
+                                   font-family:inherit;">
+                        HISTORY
+                    </button>
+                </div>
+                <div id="messages-container">
+                    <div class="msg msg-jarvis tier-2">Awaiting instructions, Sir.</div>
+                </div>
+                <div class="waveform-area"><canvas id="waveform"></canvas></div>
+                
+                <div id="paste-preview-area" style="display:none; padding:6px 10px;
+                    border-top:1px solid var(--border-color); background:rgba(0,200,255,0.03);
+                    max-height:80px; overflow-y:auto; gap:6px; flex-wrap:wrap; flex-direction:row;
+                    align-items:center;">
+                </div>
+
+                <div class="input-row">
+                    <div id="mic-btn" class="tier-1" style="width:50px; display:flex; align-items:center; justify-content:center; border-right:1px solid var(--border-color); cursor:pointer; z-index: 5;">MIC</div>
+                    
+                    <label id="attach-btn" title="Attach file"
+                        style="width:40px;display:flex;align-items:center;justify-content:center;
+                               border-right:1px solid var(--border-color);cursor:pointer;
+                               color:rgba(0,200,255,0.5);font-size:16px;z-index: 5;">
+                        📎
+                        <input type="file" id="file-input" style="display:none"
+                               accept="image/*,.txt,.py,.js,.html,.css,.json,.md,.csv"
+                               onchange="handleFileSelect(this)">
+                    </label>
+
+                    <div id="live-waveform-container" style="width: 100px; display: none; align-items:center; border-right:1px solid var(--border-color); z-index: 5;">
+                        <canvas id="live-waveform-canvas" width="100" height="40"></canvas>
+                    </div>
+                    <div style="position: relative; flex: 1; display: flex; overflow: hidden; min-width: 0;">
+                        <textarea id="chat-input"
+                          placeholder="ENTER COMMAND..."
+                          rows="1"
+                          style="flex:1; width:100%; min-width:0; background:transparent;
+                                 border:none; color:var(--agent-primary); padding:8px 15px;
+                                 font-family:inherit; outline:none; z-index:2; position:relative;
+                                 resize:none; overflow-y:hidden; line-height:1.5;
+                                 max-height:120px; overflow-y:auto;
+                                 scrollbar-width:thin;
+                                 scrollbar-color:var(--agent-primary) transparent;"
+                          class="tier-1"></textarea>
+                    </div>
+                    <button class="btn-transmit tier-3" id="interrupt-btn" style="z-index: 5;">INTERRUPT</button>
+                    <button class="btn-transmit tier-3" id="abort-btn" style="z-index: 5;">ABORT</button>
+                    <button class="btn-transmit tier-3" id="transmit-btn" style="z-index: 5;">TRANSMIT</button>
+                </div>
+                <div style="font-size:8px;padding:2px 15px;opacity:0.3;
+                            letter-spacing:1px;color:var(--agent-primary)">
+                  ENTER TO SEND · SHIFT+ENTER FOR NEW LINE · PASTE FILES/IMAGES
+                </div>
+                <div class="metric-tiles">
+                    <div class="tile">
+                        <div class="tile-label tier-1">Pending Sync</div>
+                        <div class="tile-val tier-3">--</div>
+                    </div>
+                    <div class="tile">
+                        <div class="tile-label tier-1">Pending Sync</div>
+                        <div class="tile-val tier-3">--</div>
+                    </div>
+                    <div class="tile">
+                        <div class="tile-label tier-1">Pending Sync</div>
+                        <div class="tile-val tier-3">--</div>
+                    </div>
+                </div>
+            </section>
+
+            <section style="display:flex; flex-direction:column; gap:15px;">
+                <div class="panel arc-panel">
+                    <div class="panel-top-glow"></div>
+                    <div class="panel-title tier-1" style="position:absolute; top:0; width:100%;">Arc Reactor</div>
+                    <div class="arc-container">
+                        <div class="arc-ring r1"></div><div class="arc-ring r2"></div><div class="arc-ring r3"></div>
+                        <div class="arc-core"></div>
+                    </div>
+                    <div id="arc-pwr-label" class="tier-1" style="font-size:8px; margin-top:8px;">PWR SIM</div>
+                </div>
+
+                <div class="panel" style="flex:1;">
+                    <div class="panel-top-glow"></div>
+                    <div class="panel-title tier-1">System Load</div>
+                    <div class="load-bars">
+                        <div class="bar-group">
+                            <div class="bar-label"><span class="label-text">CPU (SIM)</span><span id="cpu-val" class="value-text">--</span></div>
+                            <div class="bar-track"><div id="cpu-bar" class="bar-fill sim" style="width:0%"></div></div>
+                        </div>
+                        <div class="bar-group">
+                            <div class="bar-label"><span id="ram-label" class="label-text">RAM</span><span id="ram-val" class="value-text">--</span></div>
+                            <div class="bar-track"><div id="ram-bar" class="bar-fill" style="width:0%"></div></div>
+                        </div>
+                        <div class="bar-group">
+                            <div class="bar-label"><span id="quota-label" class="label-text">QUOTA</span><span id="quota-val" class="value-text">--</span></div>
+                            <div class="bar-track"><div id="quota-bar" class="bar-fill" style="width:0%"></div></div>
+                        </div>
+                        <div class="bar-group">
+                            <div class="bar-label"><span id="context-label" class="label-text">CONTEXT</span><span id="context-val" class="value-text">0%</span></div>
+                            <div class="bar-track"><div id="context-bar" class="bar-fill" style="width:0%"></div></div>
+                        </div>
+                        <div class="bar-group">
+                            <div class="bar-label"><span id="latency-label" class="label-text">RESPONSE LATENCY</span><span id="latency-val" class="value-text">--ms</span></div>
+                            <div class="bar-track"><div id="latency-bar" class="bar-fill" style="width:0%"></div></div>
+                        </div>
+                        <div class="bar-group">
+                            <div class="bar-label"><span id="cache-label" class="label-text">LOCAL CACHE</span><span id="cache-val" class="value-text">--</span></div>
+                            <div class="bar-track"><div id="cache-bar" class="bar-fill" style="width:0%"></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel" style="height:100px;">
+                    <div class="panel-top-glow"></div>
+                    <div class="panel-title tier-1">Uptime</div>
+                    <div id="uptime" class="tier-3" style="flex:1; display:flex; align-items:center; justify-content:center; font-family:Orbitron; font-size:1.2rem;">00:00:00</div>
+                    <div class="tier-1" style="font-size:7px; text-align:center; padding:4px;">BUILD: v7.5.0 · LAST SYNC: JUST NOW</div>
+                    <div id="system-status-bar" class="tier-1" style="font-size:9px; text-align:center; padding:4px; letter-spacing:2px; color:var(--amber);">[ SYSTEM: STANDING BY ]</div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Agent Side Panel -->
+    <div id="agent-side-panel" class="panel" style="position:fixed; right:-350px; top:60px; width:300px; height:calc(100% - 120px); transition: right 0.3s; z-index: 1000;">
+        <div class="panel-top-glow"></div>
+        <div class="panel-title tier-1" id="side-agent-name">AGENT</div>
+        <div style="padding:15px;" class="tier-2">
+            <div id="side-agent-status" style="margin-bottom:20px; font-size:12px; line-height:1.5;">Status: ...</div>
+            <div id="side-agent-tasks" style="margin-bottom:30px; font-size:10px; line-height:1.8; opacity:0.8;">Last 5 Tasks:<br>...</div>
+            <button class="btn-transmit tier-3" id="wake-agent-btn" style="width:100%; border-color:var(--green); color:var(--green);">WAKE AGENT</button>
+        </div>
+    </div>
+
+    <!-- Command Palette -->
+    <div id="cmd-palette" class="panel modal-card" style="position:fixed; top:20%; left:50%; transform:translateX(-50%); width:500px; display:none; z-index:3000;">
+        <div class="panel-top-glow"></div>
+        <div class="panel-title tier-1">QUICK COMMANDS</div>
+        <input type="text" id="cmd-search" class="tier-1" style="width:100%; background:transparent; border:none; border-bottom:1px solid var(--border-color); color:var(--agent-primary); padding:10px; font-family:inherit; outline:none;" placeholder="Search commands...">
+        <div id="cmd-list" style="max-height:300px; overflow-y:auto; padding:10px; margin-top:10px;"></div>
+    </div>
+
+    <div id="modal-overlay">
+        <div class="panel modal-card">
+            <div class="panel-top-glow"></div>
+            <div style="text-align:center; font-size:2rem; margin-bottom:10px;" class="tier-3">⚠</div>
+            <div style="text-align:center; margin-bottom:5px; color:var(--amber); font-family:Orbitron; letter-spacing:2px;">SYSTEM THRESHOLD ALERT</div>
+            <div class="tier-1" style="text-align:center; font-size:9px; letter-spacing:2px; margin-bottom:20px;">KEY STATUS UPDATE</div>
+            
+            <div id="modal-body" class="tier-2" style="font-size:0.9rem; line-height:1.6; margin-bottom:20px; text-align:center; white-space: pre-line;"></div>
+            
+            <div id="modal-bar-container" style="height:4px; background:rgba(255,255,255,0.05); margin-bottom:30px; position:relative;">
+                <div id="modal-bar" style="height:100%; background:var(--amber);"></div>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button class="modal-btn" id="btn-continue" style="border-color:var(--amber); color:var(--amber);">
+                    CONTINUE<br><span id="sub-continue" style="font-size:7px; opacity:0.6;"></span>
+                </button>
+                <button class="modal-btn" id="btn-switch-model" style="border-color:var(--agent-primary); color:var(--agent-primary);">
+                    SWITCH MODEL<br><span id="sub-model" style="font-size:7px; opacity:0.6;"></span>
+                </button>
+                <button class="modal-btn" id="btn-switch-key" style="border-color:var(--green); color:var(--green);">
+                    SWITCH KEY<br><span id="sub-key" style="font-size:7px; opacity:0.6;"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.onerror = (msg, src, line, col, err) => {
+            console.error('JARVIS SCRIPT ERROR:', msg, 'Line:', line);
+            // Don't block boot even on error
+            const overlay = document.getElementById('boot-overlay');
+            if (overlay && overlay.style.opacity !== '0') {
+                setTimeout(() => {
+                    overlay.style.opacity = '0';
+                    setTimeout(() => { overlay.remove(); initHUD(); }, 500);
+                }, 2000);
+            }
+        };
+
+        const AGENT_INFO = {
+            jarvis:  { status: "ACTIVE",   role: "Orchestrator", desc: "Routes commands to agents. Entry point. Always online." },
+            alfred:  { status: "ACTIVE",   role: "Work & Roadmap", desc: "Reads tasks/calendar. Daily schedules & morning briefings." },
+            vision:  { status: "IDLE",     role: "Design Ideation", desc: "Design concepts, layouts, palettes & wireframes." },
+            banner:  { status: "IDLE",     role: "Automation", desc: "Converts English to n8n workflows automatically." },
+            stark:   { status: "BUILDING", role: "Web Builder", desc: "Controls AI builders & pushes to GitHub." },
+            nebula:  { status: "IDLE",     role: "Asset Creator", desc: "Generates images and video assets." },
+            coulson: { status: "ACTIVE",   role: "Installer", desc: "Dependency watchdog. Verifies/installs tools." },
+            pepper:  { status: "ALERT",    role: "Routine", desc: "Inventory tracker. Alerts on low stock." },
+            xavier:  { status: "IDLE",     role: "Decision Critic", desc: "Thinking critique. Detects biases." },
+            friday:  { status: "IDLE",     role: "Software Learning", desc: "Dev tutorials & structured notes." },
+            shuri:   { status: "IDLE",     role: "ECE Learning", desc: "Robotics/Electronics engineering path." },
+            rhodey:  { status: "ACTIVE",   role: "Health", desc: "Google Fit sync. Sleep/Steps/Activity." },
+            wong:    { status: "IDLE",     role: "Finance", desc: "Income/Expense logs to Google Sheets." }
+        };
+
+        var sessionStart = Date.now();
+        var isSpeaking = false;
+        var isSending = false;
+        var pendingPrompt = "";
+        var audioCtx = null;
+
+        // Voice-text sync calibration
+        // Increase RENDER_DELAY_MS if text appears too far ahead of voice
+        // Decrease if voice is getting ahead of text
+        var RENDER_DELAY_MS = 28;      // ms between each token appearing on screen
+        var SPEECH_LEAD_CHARS = 20;    // how many chars ahead text can be vs voice
+
+        var tokenArrivalQueue = [];    // raw tokens from network
+        var renderQueue = [];          // tokens waiting to be painted
+        var isRendering = false;       // render loop running?
+        var renderIntervalId = null;   // interval handle
+
+        function startRenderLoop(bubble, container) {
+            if (isRendering) return;
+            isRendering = true;
+            let displayedText = '';
+            window._renderSpeechBuffer = ''; // shared so waitForRender can flush it
+            
+            renderIntervalId = setInterval(() => {
+                if (renderQueue.length === 0) return;
+                
+                // Release one token per tick
+                const token = renderQueue.shift();
+                displayedText += token;
+                bubble.innerHTML = renderMarkdown(displayedText); // use markdown renderer
+                scrollToBottom();
+                
+                // Always queue speech — regardless of commsOpen
+                window._renderSpeechBuffer += token;
+                const sentenceEnd = window._renderSpeechBuffer.search(/[.!?]\s/);
+                if (sentenceEnd !== -1) {
+                    const sentence = window._renderSpeechBuffer.substring(0, sentenceEnd + 1).trim();
+                    window._renderSpeechBuffer = window._renderSpeechBuffer.substring(sentenceEnd + 2);
+                    if (sentence.length > 3) {
+                        queueSpeech(cleanTextForSpeech(sentence));
+                    }
+                }
+            }, RENDER_DELAY_MS);
+        }
+
+        function stopRenderLoop() {
+            if (renderIntervalId) {
+                clearInterval(renderIntervalId);
+                renderIntervalId = null;
+            }
+            isRendering = false;
+            tokenArrivalQueue = [];
+            renderQueue = [];
+        }
+
+        function getAudioCtx() {
+            if (!audioCtx) {
+                try {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                } catch(e) { return null; }
+            }
+            return audioCtx;
+        }
+
+        var cmdHistory = JSON.parse(localStorage.getItem('jarvis_cmd_history') || '[]');
+        var historyIndex = -1;
+        var jarvisVoiceRec = null;
+        var silenceTimer = null;
+        var finalTranscript = '';
+        var commsOpen = false;
+        var liveAudioCtx, liveAnalyser, liveDataArray;
+
+        function playSound(type) {
+            try {
+                const ctx = getAudioCtx();
+                if (!ctx) return;
+                const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                if (type === 'hum') { osc.type = 'sine'; osc.frequency.value = 20; gain.gain.value = 0.03; osc.start(); return; }
+                if (type === 'click') { osc.frequency.setValueAtTime(800, ctx.currentTime); gain.gain.setValueAtTime(0.1, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08); osc.start(); osc.stop(ctx.currentTime + 0.08); }
+                if (type === 'chime') { [440, 880].forEach((f, i) => { const o = ctx.createOscillator(); const g = ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.frequency.value = f; g.gain.setValueAtTime(0.1, ctx.currentTime + i*0.2); g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i*0.2 + 0.2); o.start(ctx.currentTime + i*0.2); o.stop(ctx.currentTime + i*0.2 + 0.2); }); }
+            } catch(e) {}
+        }
+
+        async function runBoot() {
+            const bar = document.getElementById('boot-bar');
+            const line = document.getElementById('boot-status');
+            const overlay = document.getElementById('boot-overlay');
+
+            if (!bar || !line || !overlay) {
+                // Elements missing — just hide overlay and init
+                if (overlay) overlay.style.display = 'none';
+                initHUD();
+                return;
+            }
+
+            const bootLines = [
+                "LOADING CORE SYSTEMS...",
+                "INITIALIZING NEURAL NETWORKS...",
+                "CALIBRATING REPULSOR ARRAYS...",
+                "CONNECTING TO GEMINI MAINFRAME...",
+                "VERIFYING AGENT SIGNATURES...",
+                "MOUNTING SQLITE DATABASE...",
+                "ESTABLISHING TELEGRAM UPLINK...",
+                "RUNNING SELF-DIAGNOSTICS...",
+                "ALL SYSTEMS NOMINAL.",
+                "WELCOME, MR. STARK."
+            ];
+
+            for (let i = 0; i < bootLines.length; i++) {
+                line.innerText = bootLines[i];
+                bar.style.width = ((i + 1) / bootLines.length * 100) + '%';
+                await new Promise(r => setTimeout(r, 350));
+            }
+
+            // Fade out
+            overlay.style.transition = 'opacity 1s ease';
+            overlay.style.opacity = '0';
+
+            // After fade — FULLY REMOVE from DOM
+            setTimeout(() => {
+                overlay.remove();
+                initHUD();
+            }, 1000);
+        }
+
+        async function initHUD() {
+            // First — find best model before anything else
+            try {
+              const res = await fetch('/startup-check');
+              const data = await res.json();
+              if (data.status === 'ok') {
+                updateModelBadge(data.active_key, data.active_model);
+                window.currentKeyIndex = (data.active_key || 1) - 1;
+                window.currentModelIndex = data.active_key_model_index || 0;
+                updateStatusBar('KEY ' + data.active_key + ' ACTIVE · '
+                    + data.active_model.replace('gemini-','').toUpperCase());
+                setTimeout(() => updateStatusBar('SYSTEMS NOMINAL'), 3000);
+              }
+            } catch(e) {}
+
+            try { renderRoster(); } catch(e) { console.error('renderRoster', e); }
+            try { startParticles(); } catch(e) { console.error('startParticles', e); }
+            try { startClocks(); } catch(e) { console.error('startClocks', e); }
+            try { startWaveform(); } catch(e) { console.error('startWaveform', e); }
+            try { initVoiceSystem(); } catch(e) { console.error('initVoiceSystem', e); }
+            try { playSound('hum'); } catch(e) { console.error('playSound', e); }
+            try { updateQuota(); } catch(e) { console.error('updateQuota', e); }
+            try { setInterval(updateQuota, 120000); } catch(e) {}
+            try { resetAmbientTimer(); } catch(e) {}
+            try { pollAgentHealth(); } catch(e) {}
+        }
+
+        function handleFileSelect(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            if (file.type.startsWith('image/')) {
+              reader.onload = (e) => showPastePreview('image', e.target.result, file.name);
+              reader.readAsDataURL(file);
+            } else {
+              reader.onload = (e) => showPastePreview('file', e.target.result, file.name);
+              reader.readAsText(file);
+            }
+            input.value = '';
+        }
+
+        function scrollToBottom() {
+            const c = document.getElementById('messages-container');
+            if (c) c.scrollTop = c.scrollHeight;
+        }
+
+        // --- MODEL SWITCHER ---
+        async function toggleModelMenu() {
+            const menu = document.getElementById('model-menu');
+            const badge = document.getElementById('active-model-badge');
+            
+            if (menu.style.display === 'block') {
+              menu.style.display = 'none';
+              return;
+            }
+            
+            try {
+              const res = await fetch('/api-key-status');
+              const data = await res.json();
+              menu.innerHTML = '';
+              
+              // Position menu below the badge dynamically
+              const rect = badge.getBoundingClientRect();
+              menu.style.position = 'fixed';
+              menu.style.top = (rect.bottom + 4) + 'px';
+              menu.style.left = 'auto';
+              menu.style.right = (window.innerWidth - rect.right) + 'px';
+              menu.style.zIndex = '9999';
+              menu.style.minWidth = '240px';
+              menu.style.maxHeight = '300px';
+              menu.style.overflowY = 'auto';
+
+              data.keys.forEach((key, ki) => {
+                key.models.forEach((model, mi) => {
+                  const isActive = data.active_key === ki + 1
+                    && data.active_model === model.name;
+                  const pct = model.percent || 0;
+                  const div = document.createElement('div');
+                  div.style.cssText = 'padding:8px 12px;cursor:pointer;'
+                    + 'border-bottom:1px solid rgba(0,200,255,0.08);font-size:10px;'
+                    + 'display:flex;justify-content:space-between;align-items:center;'
+                    + (isActive ? 'background:rgba(0,200,255,0.1);' : '');
+                  div.innerHTML = `
+                    <span style="color:${isActive?'var(--green)':'var(--agent-primary)'}">
+                        KEY ${ki+1} · ${model.name.replace('gemini-','').toUpperCase()}
+                        ${isActive ? ' ◀' : ''}
+                    </span>
+                    <span style="font-size:9px;opacity:0.6;display:flex;align-items:center;">
+                        <span style="color:${pct>90?'var(--red)':pct>70?'var(--amber)':'var(--agent-primary)'}">
+                            ${pct}%
+                        </span>
+                        <span style="opacity:0.4;margin-left:4px;">
+                            ${model.source === 'headers' ? '●LIVE' : '○EST'}
+                        </span>
+                    </span>`;
+                  div.onclick = () => switchToModel(ki, mi, model.name);
+                  menu.appendChild(div);
+                });
+              });
+
+              const syncBtn = document.createElement('div');
+              syncBtn.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:10px;'
+                + 'color:var(--amber);letter-spacing:1px;text-align:center;'
+                + 'border-top:1px solid rgba(0,200,255,0.15);';
+              syncBtn.textContent = '↻ FORCE SYNC FROM GOOGLE';
+              syncBtn.onclick = async () => {
+                  syncBtn.textContent = 'SYNCING...';
+                  await fetch('/force-sync-usage', {method: 'POST'});
+                  // Refresh the menu with real data
+                  await toggleModelMenu();
+                  updateStatusBar('USAGE SYNCED FROM GOOGLE');
+                  setTimeout(() => updateStatusBar('SYSTEMS NOMINAL'), 3000);
+              };
+              menu.appendChild(syncBtn);
+
+              menu.style.display = 'block';
+            } catch(e) {
+              menu.innerHTML = '<div style="padding:10px;font-size:10px;opacity:0.5;">Status unavailable</div>';
+              menu.style.display = 'block';
+            }
+        }
+
+        async function switchToModel(keyIdx, modelIdx, modelName) {
+            const menu = document.getElementById('model-menu');
+            if (menu) menu.style.display = 'none';
+            try {
+              await fetch('/switch-model', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({key_index: keyIdx, model_index: modelIdx})
+              });
+              updateModelBadge(keyIdx + 1, modelName);
+              showModelSwitchNotification(keyIdx + 1, modelName);
+              await updateQuota(); // immediately refresh system load bar
+            } catch(e) {}
+        }
+
+        function updateModelBadge(keyNum, modelName) {
+            const badge = document.getElementById('active-model-badge');
+            if (badge) {
+              badge.textContent = 'K' + keyNum + ' · '
+                + modelName.replace('gemini-','').toUpperCase().substring(0,10);
+            }
+        }
+
+        function showModelSwitchNotification(keyNum, modelName) {
+            playSound('chime');
+            const notif = document.createElement('div');
+            notif.style.cssText = 'position:fixed;top:55px;left:50%;transform:translateX(-50%);'
+              + 'background:rgba(0,10,25,0.95);border:1px solid var(--green);'
+              + 'color:var(--green);padding:8px 20px;font-size:10px;letter-spacing:2px;'
+              + 'z-index:999;animation:pulse 0.5s ease;';
+            notif.textContent = `[ MODEL SWITCHED → KEY ${keyNum} · ${modelName.replace('gemini-','').toUpperCase()} ]`;
+            document.body.appendChild(notif);
+            setTimeout(() => notif.remove(), 3000);
+
+            // Also show in chat
+            const container = document.getElementById('messages-container');
+            if (container) {
+              const sep = document.createElement('div');
+              sep.style.cssText = 'text-align:center;font-size:9px;letter-spacing:2px;'
+                + 'color:var(--green);opacity:0.6;padding:4px 0;';
+              sep.textContent = `[ SWITCHED TO KEY ${keyNum} · ${modelName.replace('gemini-','').toUpperCase()} ]`;
+              container.appendChild(sep);
+              container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        // --- PASTE & ATTACHMENTS ---
+        window.pasteAttachments = [];
+
+        function showPastePreview(type, data, name) {
+            const area = document.getElementById('paste-preview-area');
+            area.style.display = 'flex';
+            const item = document.createElement('div');
+            item.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 8px;'
+              + 'background:rgba(0,200,255,0.08);border:1px solid rgba(0,200,255,0.2);'
+              + 'border-radius:2px;font-size:10px;cursor:pointer;';
+            if (type === 'image') {
+              item.innerHTML = `<img src="${data}" style="height:40px;width:40px;object-fit:cover;border-radius:2px;">
+                <span style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</span>
+                <span onclick="removePasteItem(this.parentElement,'${name}')"
+                      style="opacity:0.5;font-size:12px;cursor:pointer;">✕</span>`;
+            } else {
+              item.innerHTML = `<span style="font-size:14px;">📄</span>
+                <span style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</span>
+                <span onclick="removePasteItem(this.parentElement,'${name}')"
+                      style="opacity:0.5;font-size:12px;cursor:pointer;">✕</span>`;
+            }
+            area.appendChild(item);
+            window.pasteAttachments.push({ type, data, name });
+        }
+
+        function removePasteItem(el, name) {
+            el.remove();
+            window.pasteAttachments = window.pasteAttachments.filter(a => a.name !== name);
+            const area = document.getElementById('paste-preview-area');
+            if (!area.children.length) area.style.display = 'none';
+        }
+
+        function showCodePasteHint() {
+            updateStatusBar('CODE DETECTED · SENDING AS FORMATTED BLOCK');
+            setTimeout(() => updateStatusBar('SYSTEMS NOMINAL'), 3000);
+        }
+
+        // --- AMBIENT MODE ---
+        var ambientTimer;
+        function resetAmbientTimer() {
+            clearTimeout(ambientTimer);
+            document.body.classList.remove('ambient-mode');
+            updateStatusBar("SYSTEMS NOMINAL");
+            ambientTimer = setTimeout(() => {
+                document.body.classList.add('ambient-mode');
+                updateStatusBar("AMBIENT MODE ACTIVE");
+            }, 5 * 60 * 1000);
+        }
+        window.addEventListener('mousemove', resetAmbientTimer);
+        window.addEventListener('keydown', resetAmbientTimer);
+
+        function updateStatusBar(text) {
+            const el = document.getElementById('system-status-bar');
+            if (el) el.innerText = `[ SYSTEM: ${text.toUpperCase()} ]`;
+        }
+
+        function renderMarkdown(text) {
+            if (!text) return '';
+            return text
+                .replace(/```[\w]*\n?([\s\S]*?)```/g,
+                    '<pre style="background:rgba(0,200,255,0.06);border:1px solid rgba(0,200,255,0.2);padding:10px;border-radius:4px;overflow-x:auto;font-size:0.8rem;white-space:pre-wrap;margin:6px 0;word-break:break-all;">$1</pre>')
+                .replace(/`([^`]+)`/g,
+                    '<code style="background:rgba(0,200,255,0.1);padding:1px 5px;border-radius:2px;font-size:0.85em;">$1</code>')
+                .replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/^### (.*$)/gm,
+                    '<div style="font-size:0.95rem;font-weight:500;margin:8px 0 4px;opacity:0.9;">$1</div>')
+                .replace(/^## (.*$)/gm,
+                    '<div style="font-size:1rem;font-weight:500;margin:10px 0 4px;opacity:0.9;">$1</div>')
+                .replace(/^# (.*$)/gm,
+                    '<div style="font-size:1.05rem;font-weight:500;margin:10px 0 4px;">$1</div>')
+                .replace(/^\* (.*$)/gm,
+                    '<div style="padding-left:12px;margin:2px 0;">· $1</div>')
+                .replace(/^- (.*$)/gm,
+                    '<div style="padding-left:12px;margin:2px 0;">· $1</div>')
+                .replace(/\n\n/g, '<br><br>')
+                .replace(/\n/g, '<br>');
+        }
+
+        // --- AGENT ROSTER & POLLING ---
+        function renderRoster() {
+            const list = document.getElementById('agent-list');
+            if (!list) return;
+            list.innerHTML = Object.entries(AGENT_INFO).map(([id, info]) => `
+                <div class="agent-item" onclick="openAgentPanel('${id}')">
+                    <span class="tier-2">${id.toUpperCase()}</span>
+                    <div class="dot dot-${info.status}"></div>
+                </div>`).join('');
+            if (AGENT_INFO.pepper.status === 'ALERT') {
+                const threatText = document.getElementById('threat-text');
+                if (threatText) {
+                    threatText.innerText = "ALERT DETECTED"; threatText.style.fill = "var(--red)";
+                }
+            }
+        }
+        function openAgentPanel(id) {
+          playSound('click');
+          const info = AGENT_INFO[id];
+          if (!info) return;
+
+          const nameEl = document.getElementById('side-agent-name');
+          const statusEl = document.getElementById('side-agent-status');
+          const tasksEl = document.getElementById('side-agent-tasks');
+          const panel = document.getElementById('agent-side-panel');
+
+          if (nameEl) nameEl.innerText = id.toUpperCase();
+
+          const statusColor = {
+            'ACTIVE': 'var(--green)',
+            'BUILDING': 'var(--amber)',
+            'ALERT': 'var(--red)',
+            'IDLE': 'rgba(0,200,255,0.5)'
+          }[info.status] || 'var(--agent-primary)';
+
+          if (statusEl) statusEl.innerHTML =
+            `<div style="margin-bottom:8px">
+              STATUS: <span style="color:${statusColor}">${info.status}</span>
+             </div>
+             <div style="margin-bottom:8px;opacity:0.7">
+              ROLE: ${info.role}
+             </div>
+             <div style="font-size:11px;line-height:1.6;opacity:0.6">
+              ${info.desc}
+             </div>`;
+
+          // Honest availability status
+          const isBuilt = id === 'jarvis'; // only JARVIS is built so far
+          if (tasksEl) tasksEl.innerHTML =
+            `<div style="margin-bottom:8px;font-size:10px">AVAILABILITY:</div>` +
+            (isBuilt
+              ? `<div style="color:var(--green);font-size:10px">● ONLINE · RESPONDING</div>
+                 <div style="opacity:0.5;font-size:9px;margin-top:4px">
+                   Port 8000 · Active session
+                 </div>`
+              : `<div style="color:var(--amber);font-size:10px">
+                   ○ NOT YET BUILT
+                 </div>
+                 <div style="opacity:0.5;font-size:9px;margin-top:4px;line-height:1.6">
+                   This agent is planned but not yet<br>
+                   implemented. Ask JARVIS about it<br>
+                   and JARVIS will handle it directly.
+                 </div>`);
+
+          if (panel) panel.style.right = '20px';
+        }
+        document.addEventListener('click', (e) => {
+            const panel = document.getElementById('agent-side-panel');
+            if(panel && !e.target.closest('#agent-side-panel') && !e.target.closest('.agent-item')) {
+                panel.style.right = '-350px';
+            }
+        });
+        async function pollAgentHealth() {
+            setInterval(async () => {
+                try {
+                    const res = await fetch('/health-check');
+                    const data = await res.json();
+                    if(data.status === 'ok') {
+                        for(let id in data.agents) {
+                            if(AGENT_INFO[id]) AGENT_INFO[id].status = data.agents[id];
+                        }
+                        renderRoster();
+                    }
+                } catch(e) {}
+            }, 30000);
+        }
+
+        // --- CLOCKS & METRICS ---
+        function startClocks() {
+            setInterval(() => {
+                const now = new Date();
+                const clock = document.getElementById('clock');
+                if (clock) clock.innerText = now.toLocaleTimeString() + ' · ' + now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase();
+                const up = Math.floor((Date.now() - sessionStart)/1000);
+                const h = Math.floor(up/3600).toString().padStart(2,'0');
+                const m = Math.floor((up%3600)/60).toString().padStart(2,'0');
+                const s = (up%60).toString().padStart(2,'0');
+                const uptime = document.getElementById('uptime');
+                if (uptime) uptime.innerText = `${h}:${m}:${s}`;
+                
+                const pwr = Math.round(93 + Math.sin(Date.now()/3000) * 2);
+                const pwrEl = document.getElementById('arc-pwr-label');
+                if (pwrEl) pwrEl.innerText = `PWR SIM: ${pwr}%`;
+            }, 1000);
+
+            setInterval(() => {
+                const cpu = Math.round(22 + Math.sin(Date.now()/2000)*12 + Math.random()*6);
+                const cpuVal = document.getElementById('cpu-val');
+                const cpuBar = document.getElementById('cpu-bar');
+                if (cpuVal) cpuVal.textContent = cpu + '%';
+                if (cpuBar) cpuBar.style.width = cpu + '%';
+            }, 1000);
+
+            function updateRAM() {
+                const el = document.getElementById('ram-val');
+                const bar = document.getElementById('ram-bar');
+                const label = document.getElementById('ram-label');
+                if (window.performance && window.performance.memory) {
+                    const used = (performance.memory.usedJSHeapSize / 1073741824).toFixed(2);
+                    const total = (performance.memory.jsHeapSizeLimit / 1073741824).toFixed(2);
+                    const pct = Math.round((used / total) * 100);
+                    if (el) el.textContent = used + ' / ' + total + ' GB';
+                    if (bar) bar.style.width = pct + '%';
+                    if (label) label.textContent = "RAM";
+                } else {
+                    const sim = (0.8 + Math.sin(Date.now()/5000)*0.3 + Math.random()*0.1).toFixed(2);
+                    if (el) el.textContent = sim + ' / 4.00 GB (SIM)';
+                    if (bar) bar.style.width = Math.round((sim/4)*100) + '%';
+                    if (label) label.textContent = "RAM (SIM)";
+                }
+            }
+            setInterval(updateRAM, 1000);
+            updateRAM();
+
+            function updateCache() {
+                let bytes = 0;
+                try {
+                    for (let k in localStorage) {
+                        if (localStorage.hasOwnProperty(k)) {
+                            bytes += (localStorage[k].length + k.length) * 2;
+                        }
+                    }
+                } catch(e) {}
+                const kb = (bytes / 1024).toFixed(1);
+                const val = document.getElementById('cache-val');
+                const bar = document.getElementById('cache-bar');
+                if (val) val.textContent = kb + ' KB USED';
+                if (bar) bar.style.width = Math.min(Math.round((bytes/1024) / 50 * 100), 100) + '%';
+            }
+            setInterval(updateCache, 10000);
+            updateCache();
+        }
+
+        async function updateQuota() {
+            try {
+                const res = await fetch('/api-key-status');
+                const data = await res.json();
+                const activeKey = data.keys[data.active_key - 1];
+                const activeModel = activeKey.models.find(m => m.name === data.active_model) || activeKey.models[0];
+                const used = activeModel.live_used ?? activeModel.used ?? 0;
+                const limit = activeModel.live_limit ?? activeModel.limit ?? 500;
+                const pct = Math.round((used / limit) * 100);
+                const modelShort = (activeModel.name || 'gemini').replace('gemini-','').toUpperCase();
+
+                const val = document.getElementById('quota-val');
+                const bar = document.getElementById('quota-bar');
+                if (val) val.textContent = 'KEY ' + data.active_key + ' · ' + modelShort + ': ' + used + ' / ' + limit;
+                if (bar) {
+                    bar.style.width = pct + '%';
+                    if (pct >= 90) bar.style.background = '#ff4060';
+                    else if (pct >= 70) bar.style.background = '#ffa030';
+                    else bar.style.background = 'var(--agent-primary)';
+                }
+                // Also update model badge
+                if (data.active_key > 0) {
+                  updateModelBadge(data.active_key, data.active_model);
+                  window.currentKeyIndex = (data.active_key || 1) - 1;
+                  window.currentModelIndex = 0;
+                }
+            } catch(e) {
+                const val = document.getElementById('quota-val');
+                const bar = document.getElementById('quota-bar');
+                if (val) val.textContent = '0 / 500 REQ';
+                if (bar) bar.style.width = '0%';
+            }
+        }
+
+        function updateContextMeter(tokens, limit) {
+            const pct = Math.min(Math.round((tokens/limit)*100), 100);
+            const val = document.getElementById('context-val');
+            const bar = document.getElementById('context-bar');
+            if (val) val.innerText = `${pct}%`;
+            if (bar) bar.style.width = pct + '%';
+            if(pct >= 80 && !window.contextWarned) {
+                window.contextWarned = true;
+                const msg = "Context window approaching capacity, Sir. Shall I summarise and compress the session?";
+                appendMessage('jarvis', msg);
+                speakResponse(msg);
+            }
+        }
+
+        // --- COMMAND PALETTE ---
+        const shortcuts = [
+            { label: "Morning briefing", agent: "ALFRED" },
+            { label: "New automation", agent: "BANNER" },
+            { label: "Build a site", agent: "VISION + STARK" },
+            { label: "What should I learn today", agent: "FRIDAY / SHURI" },
+            { label: "Health summary", agent: "RHODEY" },
+            { label: "Log income", agent: "WONG" },
+            { label: "Challenge my thinking", agent: "XAVIER" }
+        ];
+        window.addEventListener('keydown', (e) => {
+            if(e.ctrlKey && e.key === 'k') {
+                e.preventDefault();
+                playSound('click');
+                const palette = document.getElementById('cmd-palette');
+                const search = document.getElementById('cmd-search');
+                if (palette) palette.style.display = 'block';
+                if (search) {
+                    search.value = '';
+                    search.focus();
+                }
+                renderShortcuts('');
+            } else if (e.key === 'Escape') {
+                const palette = document.getElementById('cmd-palette');
+                if (palette) palette.style.display = 'none';
+            }
+        });
+        const cmdSearch = document.getElementById('cmd-search');
+        if (cmdSearch) cmdSearch.addEventListener('input', (e) => renderShortcuts(e.target.value));
+        function renderShortcuts(filter) {
+            const list = document.getElementById('cmd-list');
+            if (!list) return;
+            list.innerHTML = shortcuts.filter(s => s.label.toLowerCase().includes(filter.toLowerCase())).map(s => `
+                <div class="cmd-item tier-2" style="padding:10px; cursor:pointer; border-bottom:1px solid rgba(0,200,255,0.1); display:flex; justify-content:space-between;" onclick="runShortcut('${s.label}')">
+                    <span>${s.label}</span> <span style="opacity:0.5; font-size:9px;">${s.agent}</span>
+                </div>
+            `).join('');
+        }
+        window.runShortcut = function(label) {
+            playSound('click');
+            const palette = document.getElementById('cmd-palette');
+            const input = document.getElementById('chat-input');
+            if (palette) palette.style.display = 'none';
+            if (input) input.value = label;
+            sendMessage();
+        };
+
+        // --- CHAT INTERFACE ---
+        var historyVisible = false;
+
+        async function toggleHistory() {
+          const btn = document.getElementById('history-btn');
+          const container = document.getElementById('messages-container');
+          if (!btn || !container) return;
+
+          if (historyVisible) {
+            // Remove history elements
+            container.querySelectorAll('.history-msg').forEach(el => el.remove());
+            historyVisible = false;
+            // ALWAYS reset button text and style
+            btn.textContent = 'HISTORY';
+            btn.style.color = 'rgba(0,200,255,0.5)';
+            btn.style.borderColor = 'rgba(0,200,255,0.3)';
+            container.scrollTop = container.scrollHeight;
+            return;
+          }
+
+          // Load history
+          try {
+            btn.textContent = 'LOADING...';
+            btn.disabled = true;
+
+            const res = await fetch('/history');
+            const data = await res.json();
+
+            btn.disabled = false;
+
+            if (!data.history || data.history.length === 0) {
+              btn.textContent = 'HISTORY';
+              // Show brief "no history" message
+              const msg = document.createElement('div');
+              msg.className = 'history-msg';
+              msg.style.cssText = 'text-align:center;font-size:9px;'
+                + 'color:rgba(0,200,255,0.3);letter-spacing:2px;padding:6px 0;';
+              msg.textContent = '— NO PREVIOUS SESSION DATA —';
+              container.insertBefore(msg, container.firstChild);
+              historyVisible = true;
+              btn.textContent = 'HIDE';
+              btn.style.color = 'rgba(0,255,180,0.6)';
+              btn.style.borderColor = 'rgba(0,255,180,0.3)';
+              // Auto-remove after 2s
+              setTimeout(() => {
+                msg.remove();
+                historyVisible = false;
+                btn.textContent = 'HISTORY';
+                btn.style.color = 'rgba(0,200,255,0.5)';
+                btn.style.borderColor = 'rgba(0,200,255,0.3)';
+              }, 2000);
+              return;
+            }
+
+            const firstChild = container.firstChild;
+
+            // Top separator
+            const topSep = document.createElement('div');
+            topSep.className = 'history-msg';
+            topSep.style.cssText = 'text-align:center;font-size:9px;'
+              + 'color:rgba(0,200,255,0.3);letter-spacing:3px;padding:6px 0;'
+              + 'border-bottom:1px solid rgba(0,200,255,0.1);margin-bottom:8px;';
+            topSep.textContent = '— PREVIOUS SESSION · LAST 10 MESSAGES —';
+            container.insertBefore(topSep, firstChild);
+
+            // Messages
+            const frag = document.createDocumentFragment();
+            data.history.forEach(msg => {
+              const wrap = document.createElement('div');
+              wrap.className = 'history-msg';
+              wrap.style.cssText = 'opacity:0.4;margin-bottom:8px;display:flex;'
+                + (msg.role === 'user' ? 'justify-content:flex-end;' : 'justify-content:flex-start;');
+
+              const bubble = document.createElement('div');
+              bubble.className = 'msg ' + (msg.role === 'user' ? 'msg-user' : 'msg-jarvis') + ' tier-2';
+              bubble.style.fontSize = '0.85rem';
+              bubble.innerHTML = renderMarkdown(msg.content);
+
+              const tsWrap = document.createElement('div');
+              tsWrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;'
+                + (msg.role === 'user' ? 'align-items:flex-end;' : 'align-items:flex-start;');
+              tsWrap.appendChild(bubble);
+
+              const ts = document.createElement('div');
+              ts.style.cssText = 'font-size:8px;opacity:0.4;letter-spacing:1px;';
+              try { ts.textContent = new Date(msg.timestamp).toLocaleTimeString(); }
+              catch(e) { ts.textContent = 'prev session'; }
+              tsWrap.appendChild(ts);
+
+              wrap.appendChild(tsWrap);
+              frag.appendChild(wrap);
+            });
+            container.insertBefore(frag, topSep.nextSibling);
+
+            // Bottom separator
+            const botSep = document.createElement('div');
+            botSep.className = 'history-msg';
+            botSep.style.cssText = 'text-align:center;font-size:9px;'
+              + 'color:rgba(0,255,180,0.4);letter-spacing:3px;padding:6px 0;'
+              + 'border-bottom:1px solid rgba(0,255,180,0.1);margin-bottom:10px;';
+            botSep.textContent = '— LIVE SESSION —';
+            container.insertBefore(botSep, firstChild);
+
+            historyVisible = true;
+            btn.textContent = 'HIDE';
+            btn.style.color = 'rgba(0,255,180,0.6)';
+            btn.style.borderColor = 'rgba(0,255,180,0.3)';
+            container.scrollTop = 0;
+
+          } catch(e) {
+            // Reset button on any error
+            btn.textContent = 'HISTORY';
+            btn.disabled = false;
+            console.error('History load failed:', e);
+          }
+        }
+
+        async function sendMessage() {
+            if (isSending) return;
+            isSending = true;
+
+            const input = document.getElementById('chat-input');
+            const transmitBtn = document.getElementById('transmit-btn');
+            const abortBtn = document.getElementById('abort-btn');
+            const interruptBtn = document.getElementById('interrupt-btn');
+            
+            if (!input) { isSending = false; return; }
+            const text = input.value.trim();
+            if(!text && (!window.pasteAttachments || window.pasteAttachments.length === 0)) {
+                isSending = false;
+                return;
+            }
+
+            // Command history save
+            if (text) {
+                cmdHistory.unshift(text);
+                if(cmdHistory.length > 50) cmdHistory.pop();
+                localStorage.setItem('jarvis_cmd_history', JSON.stringify(cmdHistory));
+            }
+            historyIndex = -1;
+
+            input.disabled = true;
+            if (transmitBtn) transmitBtn.style.display = 'none';
+            if (abortBtn) abortBtn.style.display = 'block';
+
+            let messageText = text;
+            let attachmentsPayload = [];
+            let hasImages = false;
+
+            if (window.pasteAttachments && window.pasteAttachments.length > 0) {
+                for (const a of window.pasteAttachments) {
+                    if (a.type === 'image') {
+                        attachmentsPayload.push({type: 'image', name: a.name, data: a.data});
+                        hasImages = true;
+                    } else {
+                        messageText = (messageText ? messageText + '\n\n' : '')
+                            + `[FILE: ${a.name}]\n\`\`\`\n${a.data.substring(0, 3000)}\n\`\`\``;
+                    }
+                }
+            }
+
+            // Build user bubble with image previews
+            const container2 = document.getElementById('messages-container');
+            if (container2) {
+                const wrap = document.createElement('div');
+                wrap.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;';
+                const bubble = document.createElement('div');
+                bubble.className = 'msg msg-user tier-2';
+                let html = '';
+                for (const a of (window.pasteAttachments || [])) {
+                    if (a.type === 'image') {
+                        html += `<img src="${a.data}" style="max-width:180px;max-height:130px;
+                                 border-radius:4px;margin-bottom:6px;display:block;
+                                 border:1px solid rgba(0,200,255,0.3);">`;
+                    }
+                }
+                if (text) html += renderMarkdown(text);
+                bubble.innerHTML = html || '[Attachment]';
+                const ts = document.createElement('div');
+                ts.style.cssText = 'font-size:8px;opacity:0;transition:opacity 0.2s;letter-spacing:1px;margin-top:2px;color:rgba(0,200,255,0.4);text-align:right;';
+                ts.textContent = new Date().toLocaleTimeString();
+                wrap.appendChild(bubble);
+                wrap.appendChild(ts);
+                wrap.addEventListener('mouseenter', () => ts.style.opacity = '1');
+                wrap.addEventListener('mouseleave', () => ts.style.opacity = '0');
+                container2.appendChild(wrap);
+                scrollToBottom();
+            }
+
+            // Clear attachments
+            window.pasteAttachments = [];
+            const area = document.getElementById('paste-preview-area');
+            if (area) { area.innerHTML = ''; area.style.display = 'none'; }
+
+            input.value = '';
+            input.style.height = 'auto'; // Reset height
+            window.lastRequestStart = Date.now();
+            window.abortController = new AbortController();
+
+            // Show thinking indicator after 2 seconds if no response yet
+            thinkingTimer = setTimeout(showThinkingIndicator, 2000);
+
+            try {
+                const res = await fetch('/chat', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({text: messageText, attachments: attachmentsPayload}),
+                    signal: window.abortController.signal
+                });
+                
+                const latency = Date.now() - window.lastRequestStart;
+                const latVal = document.getElementById('latency-val');
+                const latBar = document.getElementById('latency-bar');
+                if (latVal) latVal.textContent = latency + 'ms';
+                if (latBar) latBar.style.width = Math.min(Math.round(latency / 50), 100) + '%';
+
+                const contentType = res.headers.get("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                    const data = await res.json();
+                    if (data.status === 'threshold_warning') {
+                        showThresholdModal(data);
+                        resetButtons();
+                    } else if (data.status === 'error' || data.status === 'fully_exhausted') {
+                        appendMessage('jarvis', data.reply);
+                    }
+                    return;
+                }
+
+                if (abortBtn) abortBtn.style.display = 'none';
+                if (interruptBtn) interruptBtn.style.display = 'block';
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                const container = document.getElementById('messages-container');
+                if (!container) { resetButtons(); return; }
+                
+                const wrap = document.createElement('div');
+                wrap.style.cssText = 'display:flex;flex-direction:column;align-items:flex-start;';
+                const bubble = document.createElement('div'); 
+                bubble.className = `msg msg-jarvis tier-2`; 
+                const ts = document.createElement('div');
+                ts.style.cssText = 'font-size:8px;opacity:0;transition:opacity 0.2s;'
+                  + 'letter-spacing:1px;margin-top:2px;color:rgba(0,200,255,0.4);'
+                  + 'text-align:left;';
+                ts.textContent = new Date().toLocaleTimeString();
+                wrap.appendChild(bubble);
+                wrap.appendChild(ts);
+                wrap.addEventListener('mouseenter', () => ts.style.opacity = '1');
+                wrap.addEventListener('mouseleave', () => ts.style.opacity = '0');
+                container.appendChild(wrap);
+                
+                let fullText = "";
+                let speechBuffer = "";
+
+                while (true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, {stream: true});
+                    const lines = chunk.split('\n');
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const dataStr = line.substring(6).trim();
+                            if (!dataStr) continue;
+                            try {
+                                const data = JSON.parse(dataStr);
+                                if (data.type === 'token') {
+                                    hideThinkingIndicator(); // first token kills thinking indicator
+                                    
+                                    // Push to arrival queue — DO NOT render immediately
+                                    tokenArrivalQueue.push(data.text);
+                                    renderQueue.push(data.text);
+                                    fullText += data.text; // still track full text for history saving
+                                    
+                                    // Start render loop if not running
+                                    if (!isRendering) {
+                                        startRenderLoop(bubble, container);
+                                    }
+                                } else if (data.type === 'system_internal') {
+                                    updateStatusBar(data.text);
+                                } else if (data.type === 'context') {
+                                    updateContextMeter(data.tokens, data.limit);
+                                } else if (data.type === 'error') {
+                                    if (data.status === 'rate_limit') {
+                                        // Show notification immediately
+                                        const notif = document.createElement('div');
+                                        notif.style.cssText = 'text-align:center;font-size:9px;'
+                                          + 'color:var(--amber);letter-spacing:2px;padding:6px 0;'
+                                          + 'border-top:1px solid rgba(255,160,0,0.2);'
+                                          + 'border-bottom:1px solid rgba(255,160,0,0.2);margin:4px 0;';
+                                        notif.textContent = '[ RATE LIMIT HIT — ROTATING TO NEXT KEY ]';
+                                        const container = document.getElementById('messages-container');
+                                        if (container) container.appendChild(notif);
+
+                                        // Switch key silently
+                                        try {
+                                          await fetch('/switch-model', {
+                                            method: 'POST',
+                                            headers: {'Content-Type':'application/json'},
+                                            body: JSON.stringify({
+                                              key_index: (window.currentKeyIndex || 0) + 1,
+                                              model_index: 0
+                                            })
+                                          });
+                                          // Immediately refresh quota display so badge and bar show new slot
+                                          await updateQuota();
+                                        } catch(e) {}
+
+                                        // Retry the message after a short delay
+                                        resetButtons();
+                                        setTimeout(() => {
+                                          const input = document.getElementById('chat-input');
+                                          if (input) input.value = text;
+                                          sendMessage();
+                                        }, 800);
+                                        return;
+                                    }
+
+                                    if (data.status === 'service_unavailable') {
+                                      appendMessage('jarvis',
+                                        'Service temporarily unavailable, Sir. Rotating to next available slot.');
+                                      resetButtons();
+                                      return;
+                                    }
+                                    appendMessage('jarvis', "API Error: " + data.status);
+                                    resetButtons();
+                                }
+                            } catch(e) {}
+                        }
+                    }
+                }
+                
+                // Stream is done — wait for render queue to drain before flushing speech
+                // Poll until renderQueue is empty, then flush remainder
+                const waitForRender = setInterval(() => {
+                    if (renderQueue.length === 0) {
+                        clearInterval(waitForRender);
+                        stopRenderLoop();
+                        // Flush render loop's speech buffer
+                        if (window._renderSpeechBuffer && window._renderSpeechBuffer.trim().length > 0) {
+                            queueSpeech(cleanTextForSpeech(window._renderSpeechBuffer.trim()));
+                            window._renderSpeechBuffer = '';
+                        }
+                    }
+                }, 50);
+
+            } catch(e) {
+                stopRenderLoop();
+                hideThinkingIndicator(); // always clean up on error or abort
+                if(e.name === 'AbortError') {
+                     // Handled by abort listener
+                } else {
+                     appendMessage('jarvis', "I'm sorry Sir, the neural bridge is experiencing interference.");
+                     resetButtons();
+                }
+            }
+        }
+
+        function resetButtons() {
+            // Don't stop render loop here — it self-terminates when queue drains
+            // Only stop it on abort/interrupt
+            isSending = false;
+            hideThinkingIndicator(); // always clean up on error or abort
+            const input = document.getElementById('chat-input');
+            const transmitBtn = document.getElementById('transmit-btn');
+            const abortBtn = document.getElementById('abort-btn');
+            const interruptBtn = document.getElementById('interrupt-btn');
+            if (input) {
+                input.disabled = false;
+                input.focus();
+            }
+            if (transmitBtn) transmitBtn.style.display = 'block';
+            if (abortBtn) abortBtn.style.display = 'none';
+            if (interruptBtn) interruptBtn.style.display = 'none';
+        }
+
+        function showThresholdModal(data) {
+            playSound('chime'); pendingPrompt = data.pending_prompt;
+            const w = data.warning;
+            const body = document.getElementById('modal-body');
+            const bar = document.getElementById('modal-bar');
+            const cont = document.getElementById('sub-continue');
+            const mod = document.getElementById('sub-model');
+            const key = document.getElementById('sub-key');
+            const overlay = document.getElementById('modal-overlay');
+
+            if (body) body.innerText = `Key ${w.key_num} · ${w.model_name}\n${w.used} / ${w.limit} requests used (${w.percent}%)\n\nHow would you like to proceed?`;
+            if (bar) bar.style.width = w.percent + '%';
+            if (cont) cont.innerText = `Uses remaining ${w.limit - w.used}`;
+            if (mod) mod.innerText = `→ ${w.next_model}`;
+            if (key) key.innerText = `→ Key ${w.next_key_num}`;
+            if (overlay) overlay.style.display = 'flex';
+        }
+
+        async function makeDecision(decision) {
+            playSound('click');
+            const overlay = document.getElementById('modal-overlay');
+            if (overlay) overlay.style.display = 'none';
+            await fetch('/decide', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({decision, pending_prompt: pendingPrompt}) });
+            const input = document.getElementById('chat-input');
+            if (input) input.value = pendingPrompt;
+            sendMessage();
+        }
+
+        function appendMessage(role, text) {
+            const container = document.getElementById('messages-container');
+            if (!container) return;
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'display:flex;flex-direction:column;'
+              + (role === 'user' ? 'align-items:flex-end;' : 'align-items:flex-start;');
+            const div = document.createElement('div');
+            div.className = `msg msg-${role} tier-2`;
+            div.innerHTML = renderMarkdown(text);
+            const ts = document.createElement('div');
+            ts.style.cssText = 'font-size:8px;opacity:0;transition:opacity 0.2s;'
+              + 'letter-spacing:1px;margin-top:2px;color:rgba(0,200,255,0.4);'
+              + (role === 'user' ? 'text-align:right;' : 'text-align:left;');
+            ts.textContent = new Date().toLocaleTimeString();
+            wrap.appendChild(div);
+            wrap.appendChild(ts);
+            wrap.addEventListener('mouseenter', () => ts.style.opacity = '1');
+            wrap.addEventListener('mouseleave', () => ts.style.opacity = '0');
+            container.appendChild(wrap);
+            scrollToBottom();
+
+            // Always speak JARVIS messages
+            if (role === 'jarvis' && text && text !== 'Command aborted, Sir.' 
+                && text !== 'Understood, Sir.') {
+                speakResponse(text);
+            }
+        }
+
+        function setSpeakingState(speaking) {
+            isSpeaking = speaking;
+            if (speaking) document.body.classList.add('speaking-mode');
+            else document.body.classList.remove('speaking-mode');
+        }
+
+        // ── VOICE SYSTEM — ALWAYS ON ──────────────────────────────
+        var voiceRestartTimer = null;
+        var isRestarting = false;
+
+        function loadVoicesOnce() {
+          return new Promise(resolve => {
+            const v = window.speechSynthesis.getVoices();
+            if (v.length > 0) { resolve(v); return; }
+            window.speechSynthesis.addEventListener('voiceschanged',
+              () => resolve(window.speechSynthesis.getVoices()), {once:true});
+          });
+        }
+
+        function getBestMaleVoice(voices) {
+          const preferred = [
+            'Google UK English Male',
+            'Microsoft George - English (United Kingdom)',
+            'Microsoft David - English (United States)',
+            'Microsoft Mark - English (United States)',
+            'Daniel', 'Gordon'
+          ];
+          for (const name of preferred) {
+            const v = voices.find(v => v.name === name);
+            if (v) return v;
+          }
+          const byName = voices.find(v =>
+            v.name.toLowerCase().includes('male') && v.lang.startsWith('en'));
+          if (byName) return byName;
+          const maleNames = ['david','mark','george','daniel','james','gordon'];
+          const byGuess = voices.find(v =>
+            maleNames.some(n => v.name.toLowerCase().includes(n))
+            && v.lang.startsWith('en'));
+          return byGuess || voices.find(v => v.lang.startsWith('en')) || voices[0];
+        }
+
+        var voiceCache = null;
+        async function getVoiceCached() {
+          if (voiceCache) return voiceCache;
+          const voices = await loadVoicesOnce();
+          voiceCache = getBestMaleVoice(voices);
+          return voiceCache;
+        }
+
+        // Speech queue for sync with streaming text
+        var speechQueue = [];
+        var isSpeakingChunk = false;
+
+        async function queueSpeech(text) {
+          if (!text || !text.trim() || !window.speechSynthesis) return;
+          speechQueue.push(text.trim());
+          if (!isSpeakingChunk) processNextSpeech();
+        }
+
+        async function processNextSpeech() {
+          if (speechQueue.length === 0) {
+            isSpeakingChunk = false;
+            setSpeakingState(false);
+            resetButtons();
+            updateQuota();
+            return;
+          }
+          isSpeakingChunk = true;
+          setSpeakingState(true);
+          const text = speechQueue.shift();
+          const voice = await getVoiceCached();
+          const u = new SpeechSynthesisUtterance(text);
+          u.voice = voice;
+          u.pitch = 0.75;
+          u.rate = 0.92;
+          u.volume = 1.0;
+          u.onend = () => processNextSpeech();
+          u.onerror = () => processNextSpeech();
+          window.speechSynthesis.speak(u);
+        }
+
+        var thinkingTimer = null;
+        var thinkingEl = null;
+
+        function showThinkingIndicator() {
+            const container = document.getElementById('messages-container');
+            if (!container || thinkingEl) return;
+            
+            thinkingEl = document.createElement('div');
+            thinkingEl.style.cssText = 
+                'align-self:flex-start;padding:8px 14px;'
+                + 'border-left:2px solid rgba(0,200,255,0.3);'
+                + 'background:rgba(0,200,255,0.04);'
+                + 'color:rgba(0,200,255,0.5);'
+                + 'font-size:0.85rem;letter-spacing:2px;'
+                + 'display:flex;align-items:center;gap:8px;';
+            
+            // Animated dots
+            thinkingEl.innerHTML = `
+                <span>PROCESSING</span>
+                <span id="thinking-dots" style="letter-spacing:1px;">.</span>
+            `;
+            container.appendChild(thinkingEl);
+            scrollToBottom();
+            
+            // Animate the dots
+            let dotCount = 1;
+            thinkingEl._dotInterval = setInterval(() => {
+                const dots = document.getElementById('thinking-dots');
+                if (dots) {
+                    dotCount = (dotCount % 3) + 1;
+                    dots.textContent = '.'.repeat(dotCount);
+                }
+            }, 400);
+        }
+
+        function hideThinkingIndicator() {
+            if (thinkingTimer) {
+                clearTimeout(thinkingTimer);
+                thinkingTimer = null;
+            }
+            if (thinkingEl) {
+                if (thinkingEl._dotInterval) clearInterval(thinkingEl._dotInterval);
+                thinkingEl.remove();
+                thinkingEl = null;
+            }
+        }
+
+        function cleanTextForSpeech(text) {
+            return text
+                // Remove markdown symbols
+                .replace(/\*\*(.*?)\*\*/g, '$1')       // **bold** → bold
+                .replace(/\*(.*?)\*/g, '$1')            // *italic* → italic
+                .replace(/`{1,3}(.*?)`{1,3}/gs, '$1')  // `code` → code
+                .replace(/#{1,6}\s/g, '')               // ## headers
+                .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [link](url) → link text
+                .replace(/_{1,2}(.*?)_{1,2}/g, '$1')   // _underscore_
+                .replace(/~~(.*?)~~/g, '$1')            // ~~strikethrough~~
+                .replace(/>\s/g, '')                    // > blockquote
+                .replace(/[-–—]{2,}/g, ', ')            // -- or --- → pause
+                .replace(/\|/g, ', ')                   // table pipes
+                
+                // Fix pronunciation of specific words/patterns
+                .replace(/\bAPI\b/g, 'A P I')
+                .replace(/\bUI\b/g, 'U I')
+                .replace(/\bHUD\b/g, 'hud')
+                .replace(/\bJARVIS\b/g, 'Jarvis')
+                .replace(/\bALFRED\b/g, 'Alfred')
+                .replace(/\bSTARK\b/g, 'Stark')
+                .replace(/\bFRIDAY\b/g, 'Friday')
+                .replace(/\bSHURI\b/g, 'Shuri')
+                .replace(/\bXAVIER\b/g, 'Xavier')
+                .replace(/\bBanner\b/gi, 'Banner')
+                .replace(/\bRODHEY\b/gi, 'Rhodey')
+                .replace(/\bWONG\b/g, 'Wong')
+                .replace(/\bNEBULA\b/g, 'Nebula')
+                .replace(/\bPEPPER\b/g, 'Pepper')
+                .replace(/\bCOULSON\b/g, 'Coulson')
+                .replace(/\bVISION\b/g, 'Vision')
+                .replace(/\bn8n\b/gi, 'N 8 N')
+                .replace(/\bSQLite\b/gi, 'S Q Lite')
+                .replace(/\bGemini\b/gi, 'Gemini')
+                .replace(/\bOllama\b/gi, 'Ollama')
+                .replace(/\bGroq\b/gi, 'Grok')
+                .replace(/\bGitHub\b/gi, 'Git hub')
+                .replace(/\bDocker\b/gi, 'Docker')
+                
+                // Numbers and symbols
+                .replace(/₹/g, 'rupees ')
+                .replace(/\$/g, 'dollars ')
+                .replace(/€/g, 'euros ')
+                .replace(/%/g, ' percent')
+                .replace(/\+/g, ' plus ')
+                .replace(/=/g, ' equals ')
+                .replace(/&/g, ' and ')
+                .replace(/@/g, ' at ')
+                .replace(/\//g, ' ')
+                .replace(/\\/g, ' ')
+                
+                // Clean up whitespace
+                .replace(/\s{2,}/g, ' ')
+                .trim();
+        }
+
+        async function speakResponse(text) {
+          if (!text || !window.speechSynthesis) return;
+          window.speechSynthesis.cancel();
+          speechQueue = [];
+          isSpeakingChunk = false;
+          const cleaned = cleanTextForSpeech(text);
+          if (cleaned.trim()) queueSpeech(cleaned);
+        }
+
+        function safeStartRecognition() {
+          if (!jarvisVoiceRec || isRestarting) return;
+          isRestarting = true;
+          clearTimeout(voiceRestartTimer);
+          voiceRestartTimer = setTimeout(() => {
+            try {
+              jarvisVoiceRec.start();
+            } catch(e) {
+              // Already running or other error — try again in 1s
+              setTimeout(safeStartRecognition, 1000);
+            }
+            isRestarting = false;
+          }, 300);
+        }
+
+        function initVoiceSystem() {
+          if (!window.webkitSpeechRecognition && !window.SpeechRecognition) {
+            const btn = document.getElementById('mic-btn');
+            if (btn) btn.textContent = 'NO MIC';
+            return;
+          }
+          const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+          jarvisVoiceRec = new SR();
+          jarvisVoiceRec.continuous = true;
+          jarvisVoiceRec.interimResults = true;
+          jarvisVoiceRec.lang = 'en-IN'; // Indian English — handles Hinglish and Tenglish
+          jarvisVoiceRec.maxAlternatives = 1;
+
+          jarvisVoiceRec.onresult = (e) => {
+              let interimText = '';
+              
+              for (let i = e.resultIndex; i < e.results.length; i++) {
+                  const result = e.results[i];
+                  const transcript = result[0].transcript;
+                  
+                  if (result.isFinal) {
+                      if (!commsOpen) {
+                          const lower = transcript.toLowerCase().trim();
+                          if (lower.includes('hey jarvis') || lower.match(/\bjarvis\b/)) {
+                              onWakeWord();
+                          }
+                      } else {
+                          // Accumulate — don't reset on each final result
+                          finalTranscript += ' ' + transcript;
+                          clearTimeout(silenceTimer);
+                          
+                          // Update input with accumulated transcript
+                          const input = document.getElementById('chat-input');
+                          if (input && !isSending) {
+                              input.value = finalTranscript.trim();
+                              input.style.height = 'auto';
+                              input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+                              input.placeholder = 'SPEAK NOW...';
+                          }
+                          
+                          // 3 seconds after last word = send
+                          silenceTimer = setTimeout(() => {
+                              const cmd = finalTranscript.trim();
+                              if (cmd && cmd.length > 1 && !isSending) {
+                                  finalTranscript = '';
+                                  sendMessage();
+                              }
+                          }, 3000);
+                      }
+                  } else {
+                      // Interim — show what's being heard right now
+                      interimText += transcript;
+                      if (commsOpen) {
+                          const input = document.getElementById('chat-input');
+                          if (input && !isSending) {
+                              // Show accumulated finals + current interim
+                              input.value = (finalTranscript + ' ' + interimText).trim();
+                              input.style.height = 'auto';
+                              input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+                          }
+                      }
+                  }
+              }
+          };
+
+          // CRITICAL: always restart — this is the always-on system
+          jarvisVoiceRec.onend = () => {
+            isRestarting = false;
+            // Reset placeholder
+            const input = document.getElementById('chat-input');
+            if (input) input.placeholder = 'ENTER COMMAND...';
+            // Always restart unless permission was denied
+            if (!jarvisVoiceRec._permissionDenied) {
+              safeStartRecognition();
+            }
+          };
+
+          jarvisVoiceRec.onerror = (e) => {
+            isRestarting = false;
+            if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+              jarvisVoiceRec._permissionDenied = true;
+              const btn = document.getElementById('mic-btn');
+              if (btn) btn.textContent = 'DENIED';
+              return;
+            }
+            if (e.error === 'network') {
+              // Network error — wait longer before retry
+              setTimeout(safeStartRecognition, 3000);
+              return;
+            }
+            // aborted, no-speech, audio-capture — all restart normally via onend
+          };
+
+          safeStartRecognition();
+          updateStatusBar('LISTENING: HEY JARVIS');
+        }
+
+        function onWakeWord() {
+          if (commsOpen) return;
+          commsOpen = true;
+          finalTranscript = '';
+          clearTimeout(silenceTimer);
+          playSound('chime');
+          updateMicBtn(true);
+          updateStatusBar('AUDIO COMMS OPEN — SPEAK NOW');
+          const wave = document.getElementById('live-waveform-container');
+          if (wave) wave.style.display = 'flex';
+          if (!liveAudioCtx) initLiveWaveform();
+          speakResponse('Audio communication initiated, Sir.');
+        }
+
+        function endComms() {
+          commsOpen = false;
+          finalTranscript = '';
+          clearTimeout(silenceTimer);
+          window.speechSynthesis.cancel();
+          speechQueue = [];
+          isSpeakingChunk = false;
+          setSpeakingState(false);
+          updateMicBtn(false);
+          updateStatusBar('LISTENING: HEY JARVIS');
+          const wave = document.getElementById('live-waveform-container');
+          if (wave) wave.style.display = 'none';
+          const input = document.getElementById('chat-input');
+          if (input) input.placeholder = 'ENTER COMMAND...';
+          speakResponse('Audio communications closed, Sir.');
+        }
+
+        function updateMicBtn(open) {
+          const btn = document.getElementById('mic-btn');
+          if (!btn) return;
+          if (open) {
+            btn.textContent = 'END COMMS';
+            btn.style.color = 'var(--red)';
+            btn.style.borderRight = '1px solid var(--red)';
+            btn.style.minWidth = '85px';
+            btn.style.animation = 'pulse 1s infinite';
+          } else {
+            btn.textContent = 'MIC';
+            btn.style.color = '';
+            btn.style.borderRight = '1px solid var(--border-color)';
+            btn.style.minWidth = '50px';
+            btn.style.animation = 'none';
+          }
+        }
+
+        // Mic button toggle
+        const micBtn = document.getElementById('mic-btn');
+        if (micBtn) {
+          micBtn.onclick = () => {
+            playSound('click');
+            if (!commsOpen) onWakeWord();
+            else endComms();
+          };
+        }
+
+        // DO NOT call endComms on input focus — just pause interim display
+        const chatInputFocus = document.getElementById('chat-input');
+        if (chatInputFocus) {
+          chatInputFocus.addEventListener('focus', () => {
+            // Only clear the interim placeholder, don't end comms
+            chatInputFocus.placeholder = 'ENTER COMMAND...';
+          });
+        }
+        // ── END VOICE SYSTEM ──────────────────────────────────────
+
+        // --- VISUALIZERS ---
+        function startParticles() {
+            const canvas = document.getElementById('particles-canvas'); 
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d'); let particles = [];
+            const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }; 
+            window.addEventListener('resize', resize); resize();
+            for(let i=0; i<60; i++) particles.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, vx: Math.random()-0.5, vy: Math.random()-0.5 });
+            function animate() {
+                ctx.clearRect(0,0,canvas.width, canvas.height); ctx.fillStyle = '#00c8ff'; ctx.strokeStyle = 'rgba(0,200,255,0.1)';
+                particles.forEach((p, i) => {
+                    p.x += p.vx * 0.5; p.y += p.vy * 0.5;
+                    if(p.x<0 || p.x>canvas.width) p.vx*=-1; if(p.y<0 || p.y>canvas.height) p.vy*=-1;
+                    ctx.beginPath(); ctx.arc(p.x, p.y, 1, 0, Math.PI*2); ctx.fill();
+                    for(let j=i+1; j<particles.length; j++) {
+                        const p2 = particles[j]; const d = Math.hypot(p.x-p2.x, p.y-p2.y);
+                        if(d < 80) { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); }
+                    }
+                }); requestAnimationFrame(animate);
+            } animate();
+        }
+
+        function startWaveform() {
+            const canvas = document.getElementById('waveform');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d'); let offset = 0;
+            function animate() {
+                ctx.clearRect(0,0,canvas.width, canvas.height); ctx.beginPath(); ctx.strokeStyle = isSpeaking ? '#00ffb4' : '#00c8ff'; ctx.lineWidth = 1;
+                const amp = isSpeaking ? 15 : 4; const freq = isSpeaking ? 0.05 : 0.02;
+                for(let x=0; x<canvas.width; x++) { const y = canvas.height/2 + Math.sin(x*freq + offset)*amp; if(x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+                ctx.stroke(); offset += isSpeaking ? 0.2 : 0.04; requestAnimationFrame(animate);
+            } animate();
+        }
+
+        async function initLiveWaveform() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+                liveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const source = liveAudioCtx.createMediaStreamSource(stream);
+                liveAnalyser = liveAudioCtx.createAnalyser();
+                liveAnalyser.fftSize = 64;
+                source.connect(liveAnalyser);
+                liveDataArray = new Uint8Array(liveAnalyser.frequencyBinCount);
+                drawLiveWaveform();
+            } catch(e) {}
+        }
+
+        function drawLiveWaveform() {
+            requestAnimationFrame(drawLiveWaveform);
+            const container = document.getElementById('live-waveform-container');
+            if(container && container.style.display === 'none') return;
+            if(!liveAnalyser) return;
+            liveAnalyser.getByteTimeDomainData(liveDataArray);
+            const canvas = document.getElementById('live-waveform-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0,0,canvas.width, canvas.height);
+            ctx.beginPath();
+            ctx.strokeStyle = '#00ffb4';
+            ctx.lineWidth = 2;
+            const sliceWidth = canvas.width / liveDataArray.length;
+            let x = 0;
+            for(let i=0; i<liveDataArray.length; i++) {
+                const v = liveDataArray[i] / 128.0;
+                const y = v * canvas.height/2;
+                if(i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                x += sliceWidth;
+            }
+            ctx.stroke();
+        }
+
+        // --- EVENT LISTENERS ---
+        const transmitBtnAction = document.getElementById('transmit-btn');
+        if (transmitBtnAction) transmitBtnAction.addEventListener('click', sendMessage);
+
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) {
+            chatInput.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+                // Expand input-row to match
+                document.querySelector('.input-row').style.height = 'auto';
+                document.querySelector('.input-row').style.minHeight = 'auto';
+            });
+
+            chatInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !e.repeat) {
+                    e.preventDefault();
+                    sendMessage();
+                } else if (e.key === 'ArrowUp' && !e.shiftKey) {
+                    if (historyIndex < cmdHistory.length - 1) {
+                        e.preventDefault();
+                        historyIndex++;
+                        e.target.value = cmdHistory[historyIndex];
+                    }
+                } else if (e.key === 'ArrowDown' && !e.shiftKey) {
+                    if (historyIndex > 0) {
+                        e.preventDefault();
+                        historyIndex--;
+                        e.target.value = cmdHistory[historyIndex];
+                    } else if (historyIndex === 0) {
+                        historyIndex = -1;
+                        e.target.value = '';
+                    }
+                }
+            });
+
+            // FIX 2.1 — Paste handler for images, files, and code
+            chatInput.addEventListener('paste', async (e) => {
+                const items = e.clipboardData?.items;
+                if (!items) return;
+
+                for (const item of items) {
+                    if (item.type.startsWith('image/')) {
+                        e.preventDefault();
+                        const file = item.getAsFile();
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            showPastePreview('image', ev.target.result, file.name || 'image.png');
+                        };
+                        reader.readAsDataURL(file);
+                        return;
+                    }
+                }
+                setTimeout(() => {
+                    const val = chatInput.value;
+                    const looksLikeCode = val.includes('\n') && val.length > 100;
+                    if (looksLikeCode) showCodePasteHint();
+                }, 10);
+            });
+        }
+
+        // FIX 2.1 — Drag and drop file support
+        const msgContainer = document.getElementById('messages-container');
+        if (msgContainer) {
+            msgContainer.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.currentTarget.style.background = 'rgba(0,200,255,0.05)';
+            });
+            msgContainer.addEventListener('dragleave', (e) => {
+                e.currentTarget.style.background = '';
+            });
+            msgContainer.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                e.currentTarget.style.background = '';
+                const files = Array.from(e.dataTransfer.files);
+                for (const file of files) {
+                    if (file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => showPastePreview('image', ev.target.result, file.name);
+                        reader.readAsDataURL(file);
+                    } else {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => showPastePreview('file', ev.target.result, file.name);
+                        reader.readAsText(file);
+                    }
+                }
+            });
+        }
+
+        // FIX 3.2 — Close model menu on outside click
+        document.addEventListener('click', (e) => {
+            const menu = document.getElementById('model-menu');
+            const badge = document.getElementById('active-model-badge');
+            if (menu && badge && !badge.contains(e.target) && !menu.contains(e.target)) {
+              menu.style.display = 'none';
+            }
+        });
+        
+        const abortBtnAction = document.getElementById('abort-btn');
+        if (abortBtnAction) {
+          abortBtnAction.addEventListener('click', async () => {
+            stopRenderLoop();
+            hideThinkingIndicator();
+            // Cancel the in-flight request
+            if (window.abortController) {
+              window.abortController.abort();
+            }
+            // Cancel any speech
+            window.speechSynthesis.cancel();
+            speechQueue = [];
+            isSpeakingChunk = false;
+            setSpeakingState(false);
+
+            // Show abort message in chat
+            appendMessage('jarvis', 'Command aborted, Sir.');
+
+            // Update status bar
+            updateStatusBar('COMMAND ABORTED');
+            setTimeout(() => updateStatusBar('SYSTEMS NOMINAL'), 3000);
+
+            // Reset UI
+            resetButtons();
+
+            // Try the endpoint but don't fail if it 404s
+            try {
+              await fetch('/conversation/pending', { method: 'DELETE' });
+            } catch(e) {}
+          });
+        }
+
+        const interruptBtnAction = document.getElementById('interrupt-btn');
+        if (interruptBtnAction) {
+            interruptBtnAction.addEventListener('click', () => {
+                if (window.abortController) window.abortController.abort();
+                window.speechSynthesis.cancel();
+                speechQueue = [];
+                isSpeakingChunk = false;
+                setSpeakingState(false);
+                stopRenderLoop();
+                hideThinkingIndicator();
+                appendMessage('jarvis', "Understood, Sir.");
+                resetButtons();
+            });
+        }
+
+        const contBtn = document.getElementById('btn-continue');
+        if (contBtn) contBtn.addEventListener('click', () => makeDecision('continue'));
+        const modBtn = document.getElementById('btn-switch-model');
+        if (modBtn) modBtn.addEventListener('click', () => makeDecision('switch_model'));
+        const keyBtn = document.getElementById('btn-switch-key');
+        if (keyBtn) keyBtn.addEventListener('click', () => makeDecision('switch_key'));
+
+        function toggleFullscreen() { 
+            if(!document.fullscreenElement) document.documentElement.requestFullscreen(); 
+            else document.exitFullscreen(); 
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            runBoot();
+        });
+    </script>
+</body>
+</html>
