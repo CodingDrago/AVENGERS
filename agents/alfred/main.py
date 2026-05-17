@@ -10,11 +10,8 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-from dateutil import parser
 from google import genai
 from google.genai import types
 
@@ -872,6 +869,8 @@ async def approve_schedule():
     created = []
     failed = []
 
+    tz = CONFIG.get("user_timezone", "UTC")
+
     try:
         calendar_service = build('calendar', 'v3', credentials=creds)
         for block in blocks:
@@ -879,9 +878,9 @@ async def approve_schedule():
                 event = {
                     'summary': block['title'],
                     'start': {'dateTime': block['start'],
-                              'timeZone': 'Asia/Kolkata'},
+                              'timeZone': tz},
                     'end': {'dateTime': block['end'],
-                            'timeZone': 'Asia/Kolkata'},
+                            'timeZone': tz},
                     'colorId': {
                         'TASK': '9', 'MEETING': '11',
                         'BREAK': '2', 'BUFFER': '8'

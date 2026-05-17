@@ -16,6 +16,7 @@
     1500
   ],
   "user_callsign": "Sir",
+  "user_timezone": "YOUR_TIMEZONE_HERE (e.g. Asia/Kolkata)",
   "groq_api_key": "YOUR_GROQ_API_KEY_HERE",
   "groq_models": [
     "llama-3.3-70b-versatile",
