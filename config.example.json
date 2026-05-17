@@ -1,0 +1,159 @@
+{
+  "gemini_keys": [
+    "YOUR_GEMINI_KEY_1_HERE",
+    "YOUR_GEMINI_KEY_2_HERE",
+    "YOUR_GEMINI_KEY_3_HERE",
+    "YOUR_GEMINI_KEY_4_HERE"
+  ],
+  "models": [
+    "gemini-2.5-flash",
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite"
+  ],
+  "daily_limits": [
+    500,
+    1000,
+    1500
+  ],
+  "user_callsign": "Sir",
+  "groq_api_key": "YOUR_GROQ_API_KEY_HERE",
+  "groq_models": [
+    "llama-3.3-70b-versatile",
+    "deepseek-r1-distill-llama-70b"
+  ],
+  "groq_daily_limits": [
+    1000,
+    1000
+  ],
+  "ollama_base_url": "http://localhost:11434",
+  "ollama_model": "phi3:mini",
+  "telegram_token": "YOUR_TELEGRAM_TOKEN_HERE",
+  "telegram_chat_id": "YOUR_TELEGRAM_CHAT_ID_HERE",
+  "google_credentials_path": "D:/New genshin/AVENGERS/credentials.json",
+  "google_token_path": "D:/New genshin/AVENGERS/token.json",
+  "google_token_alfred": "D:/New genshin/AVENGERS/token_alfred.json",
+  "google_token_rhodey": "D:/New genshin/AVENGERS/token_rhodey.json",
+  "google_token_wong": "D:/New genshin/AVENGERS/token_wong.json",
+  "google_token_pepper": "D:/New genshin/AVENGERS/token_pepper.json",
+  "youtube_api_key": "YOUR_YOUTUBE_API_KEY_HERE",
+  "google_sheets_id": "YOUR_GOOGLE_SHEETS_ID_HERE",
+  "google_fit_base_url": "https://www.googleapis.com/fitness/v1",
+  "imagen_model": "imagen-3.0-generate-002",
+  "imagen_api_key": "YOUR_IMAGEN_API_KEY_HERE",
+  "n8n_base_url": "http://localhost:5678",
+  "n8n_api_key": "YOUR_N8N_API_KEY_HERE",
+  "github_token": "YOUR_GITHUB_TOKEN_HERE",
+  "github_username": "YOUR_GITHUB_USERNAME_HERE",
+  "github_default_repo": "YOUR_GITHUB_REPO_NAME_HERE",
+  "firebase_studio_url": "https://studio.firebase.google.com",
+  "bolt_url": "https://bolt.new",
+  "v0_url": "https://v0.dev",
+  "stark_tool_priority": [
+    "firebase_studio",
+    "bolt",
+    "v0"
+  ],
+  "notebooklm_url": "https://notebooklm.google.com",
+  "notebooklm_email": "YOUR_NOTEBOOKLM_EMAIL_HERE",
+  "notebooklm_password": "YOUR_NOTEBOOKLM_PASSWORD_HERE",
+  "paths": {
+    "base": "D:/New genshin/AVENGERS",
+    "db": "D:/New genshin/AVENGERS/db/core.db",
+    "outputs": "D:/New genshin/AVENGERS/outputs",
+    "credentials": "D:/New genshin/AVENGERS/credentials.json",
+    "tokens": {
+      "alfred": "D:/New genshin/AVENGERS/token_alfred.json",
+      "rhodey": "D:/New genshin/AVENGERS/token_rhodey.json",
+      "wong": "D:/New genshin/AVENGERS/token_wong.json",
+      "pepper": "D:/New genshin/AVENGERS/token_pepper.json"
+    },
+    "agent_outputs": {
+      "jarvis": "D:/New genshin/AVENGERS/outputs/jarvis",
+      "alfred": "D:/New genshin/AVENGERS/outputs/alfred",
+      "vision": "D:/New genshin/AVENGERS/outputs/vision",
+      "banner": "D:/New genshin/AVENGERS/outputs/banner",
+      "stark": "D:/New genshin/AVENGERS/outputs/stark",
+      "nebula": "D:/New genshin/AVENGERS/outputs/nebula",
+      "coulson": "D:/New genshin/AVENGERS/outputs/coulson",
+      "pepper": "D:/New genshin/AVENGERS/outputs/pepper",
+      "xavier": "D:/New genshin/AVENGERS/outputs/xavier",
+      "friday": "D:/New genshin/AVENGERS/outputs/friday",
+      "shuri": "D:/New genshin/AVENGERS/outputs/shuri",
+      "rhodey": "D:/New genshin/AVENGERS/outputs/rhodey",
+      "wong": "D:/New genshin/AVENGERS/outputs/wong"
+    },
+    "agent_logs": {
+      "jarvis": "D:/New genshin/AVENGERS/outputs/jarvis/logs",
+      "alfred": "D:/New genshin/AVENGERS/outputs/alfred/logs",
+      "vision": "D:/New genshin/AVENGERS/outputs/vision/logs",
+      "banner": "D:/New genshin/AVENGERS/outputs/banner/logs",
+      "stark": "D:/New genshin/AVENGERS/outputs/stark/logs",
+      "nebula": "D:/New genshin/AVENGERS/outputs/nebula/logs",
+      "coulson": "D:/New genshin/AVENGERS/outputs/coulson/logs",
+      "pepper": "D:/New genshin/AVENGERS/outputs/pepper/logs",
+      "xavier": "D:/New genshin/AVENGERS/outputs/xavier/logs",
+      "friday": "D:/New genshin/AVENGERS/outputs/friday/logs",
+      "shuri": "D:/New genshin/AVENGERS/outputs/shuri/logs",
+      "rhodey": "D:/New genshin/AVENGERS/outputs/rhodey/logs",
+      "wong": "D:/New genshin/AVENGERS/outputs/wong/logs"
+    }
+  },
+  "agent_ports": {
+    "JARVIS": 8000,
+    "ALFRED": 8001,
+    "VISION": 8002,
+    "BANNER": 8003,
+    "STARK": 8004,
+    "NEBULA": 8005,
+    "COULSON": 8006,
+    "PEPPER": 8007,
+    "XAVIER": 8008,
+    "FRIDAY": 8009,
+    "SHURI": 8010,
+    "RHODEY": 8011,
+    "WONG": 8012
+  },
+  "agent_settings": {
+    "alfred_briefing_time": "08:00",
+    "alfred_velocity_snapshot_time": "23:55",
+    "pepper_low_stock_threshold": 20,
+    "pepper_weekly_summary_day": "sunday",
+    "pepper_weekly_summary_time": "09:00",
+    "rhodey_sync_times": [
+      "07:00",
+      "21:00"
+    ],
+    "rhodey_weekly_summary_day": "monday",
+    "rhodey_weekly_summary_time": "08:00",
+    "wong_monthly_summary_day": 1,
+    "wong_unpaid_reminder_days": 30,
+    "friday_min_views": 50000,
+    "friday_max_video_duration_mins": 60,
+    "friday_min_video_duration_mins": 10,
+    "friday_max_videos_per_topic": 5,
+    "friday_published_within_years": 2,
+    "shuri_topics_roadmap": [
+      "Circuits Basics",
+      "Digital Logic",
+      "Microcontrollers",
+      "Embedded C",
+      "Sensors and Actuators",
+      "Control Systems",
+      "Kinematics",
+      "Computer Vision",
+      "ROS2"
+    ],
+    "stark_build_queue_max": 5,
+    "stark_free_tier_threshold": 80,
+    "xavier_session_save": true,
+    "nebula_output_format": "png",
+    "nebula_default_resolution": "1024x1024"
+  },
+  "playwright": {
+    "playwright_headless": true,
+    "playwright_browser": "chromium",
+    "playwright_timeout_ms": 30000,
+    "google_account_email": "YOUR_GOOGLE_ACCOUNT_EMAIL_HERE",
+    "google_account_password": "YOUR_GOOGLE_ACCOUNT_PASSWORD_HERE"
+  }
+}
