@@ -5,12 +5,14 @@ import asyncio
 import httpx
 import aiosqlite
 import re
+import subprocess
 from datetime import datetime
 from typing import List, Dict, Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # --- CONFIGURATION ---
 CONFIG_PATH = "../../config.json"
@@ -528,8 +530,6 @@ async def call_gemini_stream(k_idx, model_name, prompt, history=[], attachments=
 STATE = {"active_key_index": 0, "active_model_index": 0, "processes": {}, "agent_statuses": {}}
 SESSION_START = datetime.now().isoformat()
 
-import subprocess
-
 @app.post("/agent/wake")
 async def wake_agent(request: Request):
     body = await request.json()
@@ -675,11 +675,60 @@ async def find_available_slot():
             
     return None, None
 
+async def poll_single_agent(agent_name: str, port_str: str) -> tuple[str, str]:
+    if agent_name == "JARVIS":
+        return "jarvis", "ONLINE"
+    port = port_str.split(":")[-1]
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(f"http://localhost:{port}/health", timeout=2.0)
+            if res.status_code == 200 and res.json().get("status") == "ok":
+                return agent_name.lower(), "ONLINE"
+    except Exception:
+        pass
+    return agent_name.lower(), "OFFLINE"
+
+async def poll_all_agent_statuses():
+    tasks = []
+    for agent, port_str in AGENT_PORTS.items():
+        if agent != "JARVIS":
+            tasks.append(poll_single_agent(agent, port_str))
+    
+    results = await asyncio.gather(*tasks)
+    
+    new_statuses = {"jarvis": "ONLINE"}
+    for agent_name, status in results:
+        new_statuses[agent_name] = status
+        
+    STATE["agent_statuses"] = new_statuses
+    logger.debug(f"Health poll complete: {new_statuses}")
+
+@app.get("/agent/status/all")
+async def get_all_agent_statuses():
+    return STATE.get("agent_statuses", {"jarvis": "ONLINE"})
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Only initialize local resources. NO API CALLS ON STARTUP.
     await init_db()
+    
+    # Sync previously running agents from DB
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT agent_name FROM agent_runtime WHERE status != 'OFFLINE'") as cursor:
+            rows = await cursor.fetchall()
+            if rows:
+                logger.info(f"Startup: found {len(rows)} previously active agents in DB. They will be polled.")
+
+    # Start health polling scheduler
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(poll_all_agent_statuses, 'interval', seconds=15)
+    scheduler.start()
+    
+    # Do an initial poll immediately
+    asyncio.create_task(poll_all_agent_statuses())
+    
     yield
+    scheduler.shutdown()
 
 app = FastAPI(title="JARVIS Orchestrator", lifespan=lifespan)
 
