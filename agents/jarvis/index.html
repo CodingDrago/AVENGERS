@@ -150,11 +150,36 @@
             display: flex; justify-content: space-between; align-items: center; transition: 0.2s;
         }
         .agent-item:hover { background: rgba(0, 200, 255, 0.1); }
-        .dot { width: 6px; height: 6px; border-radius: 50%; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .dot-ONLINE { background: #00ffff; box-shadow: 0 0 8px #00ffff; }
+        .dot-OFFLINE { background: #ff4444; box-shadow: 0 0 8px #ff4444; opacity: 0.5; }
+        .dot-STARTING { background: #ffaa00; box-shadow: 0 0 8px #ffaa00; animation: pulse 1s infinite; }
         .dot-ACTIVE { background: var(--green); box-shadow: 0 0 8px var(--green); }
         .dot-IDLE { background: var(--agent-primary); opacity: 0.45; }
         .dot-BUILDING { background: var(--amber); animation: pulse 1s infinite; }
         .dot-ALERT { background: var(--red); animation: pulse 0.5s infinite; }
+
+        .agent-wake-btn {
+            background: rgba(0, 10, 25, 0.5);
+            border: 1px solid #00ffff;
+            color: #00ffff;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 10px;
+            padding: 8px 12px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .agent-wake-btn:hover { background: rgba(0, 255, 255, 0.1); }
+        .agent-wake-btn.stop {
+            border-color: #ff4444;
+            color: #ff4444;
+        }
+        .agent-wake-btn.stop:hover { background: rgba(255, 68, 68, 0.1); }
+        .agent-wake-btn:disabled { opacity: 0.5; cursor: not-allowed; border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.5); }
 
         /* --- CENTER COLUMN --- */
         section.panel.chat-panel {
@@ -786,6 +811,10 @@
         }
 
         async function initHUD() {
+            // Live Roster Sync (Issue 3.1)
+            pollAgentHealth();
+            setInterval(pollAgentHealth, 15000);
+
             // First — find best model before anything else
             try {
               const res = await fetch('/startup-check');
@@ -809,7 +838,6 @@
             try { updateQuota(); } catch(e) { console.error('updateQuota', e); }
             try { setInterval(updateQuota, 120000); } catch(e) {}
             try { resetAmbientTimer(); } catch(e) {}
-            try { pollAgentHealth(); } catch(e) {}
         }
 
         function handleFileSelect(input) {
@@ -1064,8 +1092,9 @@
             if (nameEl) nameEl.innerText = id.toUpperCase();
 
             const statusColor = {
-                'ACTIVE': 'var(--green)', 'BUILDING': 'var(--amber)',
-                'ALERT': 'var(--red)', 'IDLE': 'rgba(0,200,255,0.5)'
+                'ONLINE': 'var(--cyan)', 'ACTIVE': 'var(--green)',
+                'STARTING': 'var(--amber)', 'OFFLINE': 'var(--red)',
+                'IDLE': 'var(--agent-primary)'
             }[info.status] || 'var(--agent-primary)';
 
             if (statusEl) statusEl.innerHTML =
@@ -1075,9 +1104,21 @@
                  <div style="margin-bottom:6px;opacity:0.7">ROLE: ${info.role}</div>
                  <div style="font-size:11px;line-height:1.6;opacity:0.6">${info.desc}</div>`;
 
+            // Dynamic Action Button
+            let actionBtnHtml = '';
+            if (id !== 'jarvis') {
+                if (info.status === 'ONLINE') {
+                    actionBtnHtml = `<button class="agent-wake-btn stop" onclick="stopAgent('${id}')">STOP AGENT</button>`;
+                } else if (info.status === 'STARTING') {
+                    actionBtnHtml = `<button class="agent-wake-btn" style="border-color:var(--amber);color:var(--amber);" disabled>STARTING...</button>`;
+                } else {
+                    actionBtnHtml = `<button class="agent-wake-btn" onclick="wakeAgent('${id}')">WAKE AGENT</button>`;
+                }
+            }
+
             // ALFRED gets a full control panel
             if (id === 'alfred') {
-                if (tasksEl) tasksEl.innerHTML = '';
+                if (tasksEl) tasksEl.innerHTML = actionBtnHtml;
                 renderAlfredPanel(tasksEl);
                 if (panel) panel.style.right = '20px';
                 return;
@@ -1093,10 +1134,74 @@
                     : `<div style="color:var(--amber);font-size:10px">○ NOT YET BUILT</div>
                        <div style="opacity:0.5;font-size:9px;margin-top:4px;line-height:1.6">
                          This agent is planned but not yet<br>implemented.
-                         Ask JARVIS about it<br>and JARVIS will handle it directly.</div>`);
+                         Ask JARVIS about it<br>and JARVIS will handle it directly.</div>`) + actionBtnHtml;
 
             if (panel) panel.style.right = '20px';
         }
+
+        async function wakeAgent(id) {
+            playSound('click');
+            AGENT_INFO[id].status = 'STARTING';
+            renderRoster();
+            openAgentPanel(id); // Re-render button
+
+            try {
+                const res = await fetch('/agent/wake', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ agent_name: id })
+                });
+                const data = await res.json();
+                
+                if (data.status === 'starting' || data.status === 'already_running') {
+                    // Poll aggressively until online or timeout
+                    let attempts = 0;
+                    const checkInterval = setInterval(async () => {
+                        attempts++;
+                        await pollAgentHealth();
+                        if (AGENT_INFO[id].status === 'ONLINE') {
+                            clearInterval(checkInterval);
+                            openAgentPanel(id);
+                        } else if (attempts >= 15) { // 30 seconds max
+                            clearInterval(checkInterval);
+                            AGENT_INFO[id].status = 'OFFLINE';
+                            renderRoster();
+                            openAgentPanel(id);
+                            appendMessage('jarvis', `Agent ${id.toUpperCase()} failed to come online within 30 seconds, Sir.`);
+                        }
+                    }, 2000);
+                } else {
+                    AGENT_INFO[id].status = 'OFFLINE';
+                    renderRoster();
+                    openAgentPanel(id);
+                    appendMessage('jarvis', data.error || `Failed to wake ${id.toUpperCase()}, Sir.`);
+                }
+            } catch(e) {
+                AGENT_INFO[id].status = 'OFFLINE';
+                renderRoster();
+                openAgentPanel(id);
+            }
+        }
+
+        async function stopAgent(id) {
+            playSound('click');
+            try {
+                const res = await fetch('/agent/stop', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ agent_name: id })
+                });
+                const data = await res.json();
+                if (data.status === 'stopped' || data.status === 'not_running') {
+                    AGENT_INFO[id].status = 'OFFLINE';
+                    renderRoster();
+                    openAgentPanel(id);
+                    // Force a rapid poll
+                    pollAgentHealth();
+                }
+            } catch(e) {}
+        }
+
 
         var alfredActionInProgress = false;
         var alfredScheduleText = '';
@@ -1431,18 +1536,57 @@
             }
         });
         async function pollAgentHealth() {
-            setInterval(async () => {
-                try {
-                    const res = await fetch('/health-check');
-                    const data = await res.json();
-                    if(data.status === 'ok') {
-                        for(let id in data.agents) {
-                            if(AGENT_INFO[id]) AGENT_INFO[id].status = data.agents[id];
+            try {
+                const res = await fetch('/agent/status/all');
+                const data = await res.json();
+                
+                // Update AGENT_INFO statuses
+                for(let id in data) {
+                    if(AGENT_INFO[id]) {
+                        // Don't overwrite JARVIS's hardcoded ACTIVE status
+                        if(id !== 'jarvis') {
+                            // Only update if not currently STARTING
+                            if (AGENT_INFO[id].status !== 'STARTING') {
+                                AGENT_INFO[id].status = data[id];
+                            }
                         }
-                        renderRoster();
                     }
-                } catch(e) {}
-            }, 30000);
+                }
+                renderRoster();
+
+                // If ALFRED panel is open, sync its status
+                if (window.currentOpenAgent === 'alfred') {
+                    const alfredStatus = data['alfred'];
+                    if (alfredStatus === 'OFFLINE' && !alfredActionInProgress) {
+                        setAlfredStatus('error', 'OFFLINE');
+                        setAlfredButtonsDisabled(true);
+                        
+                        // Show offline warning
+                        const panel = document.querySelector('.alfred-panel');
+                        if (panel) {
+                            let warn = document.getElementById('alfred-offline-warn');
+                            if (!warn) {
+                                warn = document.createElement('div');
+                                warn.id = 'alfred-offline-warn';
+                                warn.className = 'alfred-info-card';
+                                warn.style.borderColor = 'var(--red)';
+                                warn.style.color = 'var(--red)';
+                                warn.textContent = 'ALFRED OFFLINE — Click Wake Agent';
+                                panel.insertBefore(warn, panel.firstChild);
+                            }
+                        }
+                    } else if (alfredStatus === 'ONLINE' && alfredActionInProgress && document.getElementById('alfred-offline-warn')) {
+                        // Just came online
+                        setAlfredStatus('', 'ACTIVE');
+                        setAlfredButtonsDisabled(false);
+                        const warn = document.getElementById('alfred-offline-warn');
+                        if (warn) warn.remove();
+                        // Re-render to get health stats
+                        const tasksEl = document.getElementById('side-agent-tasks');
+                        if (tasksEl) renderAlfredPanel(tasksEl);
+                    }
+                }
+            } catch(e) {}
         }
 
         // --- CLOCKS & METRICS ---
