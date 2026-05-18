@@ -1082,7 +1082,7 @@ async def get_tasks_today():
             AND due_date = ?
             ORDER BY title ASC
         """, (today,)) as cur:
-            rows = await cursor.fetchall()
+            rows = await cur.fetchall()
     tasks = [dict(r) for r in rows]
     if not tasks:
         return {"reply": "No tasks due today, Sir.", "tasks": [],

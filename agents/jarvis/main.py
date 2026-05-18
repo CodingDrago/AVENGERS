@@ -279,6 +279,15 @@ async def init_db():
                 UNIQUE(key_index, model_name, date)
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS agent_runtime (
+                agent_name TEXT PRIMARY KEY,
+                port INTEGER,
+                pid INTEGER,
+                started_at TEXT,
+                status TEXT
+            )
+        """)
         await db.commit()
 
 async def ensure_usage_record(key_index: int, model_name: str):
@@ -530,61 +539,131 @@ async def call_gemini_stream(k_idx, model_name, prompt, history=[], attachments=
 STATE = {"active_key_index": 0, "active_model_index": 0, "processes": {}, "agent_statuses": {}}
 SESSION_START = datetime.now().isoformat()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Only initialize local resources. NO API CALLS ON STARTUP.
+    await init_db()
+    
+    # Sync previously running agents from DB
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT agent_name FROM agent_runtime WHERE status != 'OFFLINE'") as cursor:
+            rows = await cursor.fetchall()
+            if rows:
+                logger.info(f"Startup: found {len(rows)} previously active agents in DB. They will be polled.")
+
+    # Start health polling scheduler
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(poll_all_agent_statuses, 'interval', seconds=15)
+    scheduler.start()
+    
+    # Do an initial poll immediately
+    asyncio.create_task(poll_all_agent_statuses())
+    
+    yield
+    scheduler.shutdown()
+
+app = FastAPI(title="JARVIS Orchestrator", lifespan=lifespan)
+
 @app.post("/agent/wake")
 async def wake_agent(request: Request):
     body = await request.json()
     agent_name = body.get("agent_name", "").lower()
-    
+
     if not agent_name:
         return JSONResponse({"error": "agent_name required"}, status_code=400)
-        
+
     port_str = AGENT_PORTS.get(agent_name.upper())
     if not port_str:
-        return JSONResponse({"error": f"Agent {agent_name} not found in config"}, status_code=404)
-        
+        return JSONResponse(
+            {"error": f"Agent {agent_name} not found"},
+            status_code=404
+        )
+
     port = int(port_str.split(":")[-1])
-    base_dir = os.path.dirname(os.path.abspath(CONFIG_PATH))
-    agent_dir = os.path.join(base_dir, "agents", agent_name)
-    
+
+    # Always resolve to absolute path first
+    config_abs = os.path.abspath(CONFIG_PATH)
+    # config.json is at AVENGERS root, agents are at AVENGERS/agents/
+    avengers_root = os.path.dirname(config_abs)
+    agent_dir = os.path.join(avengers_root, "agents", agent_name)
+
     if not os.path.exists(agent_dir):
-        return JSONResponse({"error": f"Agent directory not found: {agent_dir}"}, status_code=404)
-        
+        # Try one level up in case config is in a subdirectory
+        agent_dir = os.path.join(
+            os.path.dirname(avengers_root), "agents", agent_name
+        )
+
+    if not os.path.exists(agent_dir):
+        return JSONResponse(
+            {"error": f"Cannot find agent directory. Looked at: {agent_dir}"},
+            status_code=404
+        )
+
+    # Check if already running by hitting health endpoint
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(f"http://localhost:{port}/health",
+                                  timeout=2.0)
+            if r.status_code == 200:
+                return {"status": "already_running", "agent": agent_name,
+                        "port": port}
+    except Exception:
+        pass  # Not running, proceed to start
+
+    # Check if process is already tracked and still alive
     existing_proc = STATE["processes"].get(agent_name)
     if existing_proc and existing_proc.poll() is None:
-        return {"status": "already_running", "agent": agent_name}
-        
-    agent_log_dir = os.path.join(base_dir, "outputs", agent_name, "logs")
+        return {"status": "already_running", "agent": agent_name,
+                "port": port}
+
+    agent_log_dir = os.path.join(avengers_root, "outputs", agent_name, "logs")
     os.makedirs(agent_log_dir, exist_ok=True)
     log_file = os.path.join(agent_log_dir, "uvicorn.log")
-    
+
+    # Use sys.executable to get the SAME python that is running JARVIS
+    import sys
+    python_exe = sys.executable
+
     try:
         with open(log_file, "a") as f:
             proc = subprocess.Popen(
-                ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", str(port)],
+                [python_exe, "-m", "uvicorn", "main:app",
+                 "--host", "0.0.0.0", "--port", str(port)],
                 cwd=agent_dir,
                 stdout=f,
-                stderr=subprocess.STDOUT
+                stderr=subprocess.STDOUT,
+                env=os.environ.copy()  # inherit full environment
             )
+
         STATE["processes"][agent_name] = proc
-        
+        logger.info(
+            f"Waking {agent_name} on port {port} "
+            f"(PID {proc.pid}) via {python_exe}"
+        )
+
         # Write to SQLite
-        today = datetime.now().isoformat()
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS agent_runtime (
-                    agent_name TEXT PRIMARY KEY, port INTEGER, pid INTEGER,
-                    started_at TEXT, status TEXT
+                    agent_name TEXT PRIMARY KEY,
+                    port INTEGER,
+                    pid INTEGER,
+                    started_at TEXT,
+                    status TEXT
                 )
             """)
             await db.execute("""
                 INSERT OR REPLACE INTO agent_runtime
-                (agent_name, port, pid, started_at, status)
+                    (agent_name, port, pid, started_at, status)
                 VALUES (?, ?, ?, ?, ?)
-            """, (agent_name, port, proc.pid, today, "STARTING"))
+            """, (agent_name, port, proc.pid,
+                  datetime.now().isoformat(), "STARTING"))
             await db.commit()
-            
-        logger.info(f"Waking agent {agent_name} on port {port} (PID {proc.pid})")
-        return {"status": "starting", "agent": agent_name, "port": port}
+
+        return {"status": "starting", "agent": agent_name,
+                "port": port, "pid": proc.pid,
+                "log": log_file}
+
     except Exception as e:
         logger.error(f"Failed to wake {agent_name}: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -675,15 +754,21 @@ async def find_available_slot():
             
     return None, None
 
-async def poll_single_agent(agent_name: str, port_str: str) -> tuple[str, str]:
+async def poll_single_agent(agent_name: str,
+                             port_str: str) -> tuple[str, str]:
     if agent_name == "JARVIS":
-        return "jarvis", "ONLINE"
+        return "jarvis", "ACTIVE"
     port = port_str.split(":")[-1]
     try:
         async with httpx.AsyncClient() as client:
-            res = await client.get(f"http://localhost:{port}/health", timeout=2.0)
-            if res.status_code == 200 and res.json().get("status") == "ok":
-                return agent_name.lower(), "ONLINE"
+            res = await client.get(
+                f"http://localhost:{port}/health",
+                timeout=2.0
+            )
+            if res.status_code == 200:
+                data = res.json()
+                if data.get("status") == "ok":
+                    return agent_name.lower(), "ACTIVE"
     except Exception:
         pass
     return agent_name.lower(), "OFFLINE"
@@ -696,7 +781,7 @@ async def poll_all_agent_statuses():
     
     results = await asyncio.gather(*tasks)
     
-    new_statuses = {"jarvis": "ONLINE"}
+    new_statuses = {"jarvis": "ACTIVE"}
     for agent_name, status in results:
         new_statuses[agent_name] = status
         
@@ -705,32 +790,58 @@ async def poll_all_agent_statuses():
 
 @app.get("/agent/status/all")
 async def get_all_agent_statuses():
-    return STATE.get("agent_statuses", {"jarvis": "ONLINE"})
+    return STATE.get("agent_statuses", {"jarvis": "ACTIVE"})
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Only initialize local resources. NO API CALLS ON STARTUP.
-    await init_db()
-    
-    # Sync previously running agents from DB
+@app.post("/force-sync-usage")
+async def force_sync_usage():
+    """
+    Returns current local usage stats.
+    Does NOT call Gemini API — reads only from SQLite.
+    The 'sync' in the name now means sync the display,
+    not probe Google.
+    """
+    today = datetime.now().strftime('%Y-%m-%d')
+    results = []
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT agent_name FROM agent_runtime WHERE status != 'OFFLINE'") as cursor:
-            rows = await cursor.fetchall()
-            if rows:
-                logger.info(f"Startup: found {len(rows)} previously active agents in DB. They will be polled.")
-
-    # Start health polling scheduler
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(poll_all_agent_statuses, 'interval', seconds=15)
-    scheduler.start()
-    
-    # Do an initial poll immediately
-    asyncio.create_task(poll_all_agent_statuses())
-    
-    yield
-    scheduler.shutdown()
-
-app = FastAPI(title="JARVIS Orchestrator", lifespan=lifespan)
+        db.row_factory = aiosqlite.Row
+        for ki in range(len(GEMINI_KEYS)):
+            for m_name in MODELS:
+                async with db.execute(
+                    "SELECT * FROM api_key_usage "
+                    "WHERE key_index=? AND model_name=? AND date=?",
+                    (ki, m_name, today)
+                ) as cursor:
+                    row = await cursor.fetchone()
+                if row:
+                    used = row['live_used'] if row['source'] == 'live' \
+                           else row['local_count']
+                    limit = row['live_limit'] if row['live_limit'] > 0 \
+                            else (LIMITS[MODELS.index(m_name)]
+                                  if m_name in MODELS else 500)
+                    results.append({
+                        "key": ki + 1,
+                        "model": m_name,
+                        "used": used,
+                        "limit": limit,
+                        "percent": round((used/limit)*100, 1)
+                                   if limit > 0 else 0,
+                        "source": row['source'],
+                        "status": "ok"
+                    })
+                else:
+                    results.append({
+                        "key": ki + 1,
+                        "model": m_name,
+                        "used": 0,
+                        "limit": LIMITS[MODELS.index(m_name)]
+                                 if m_name in MODELS else 500,
+                        "percent": 0,
+                        "source": "local",
+                        "status": "no_data"
+                    })
+    logger.info("Force sync requested — returned local DB snapshot")
+    return {"results": results, "note": "Local DB snapshot. "
+            "Real usage syncs automatically from API response headers."}
 
 @app.post("/reset-rate-limits")
 async def reset_rate_limits():
